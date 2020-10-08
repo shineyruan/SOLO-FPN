@@ -9,17 +9,38 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
+import os
+
 
 class BuildDataset(torch.utils.data.Dataset):
     def __init__(self, path):
         # TODO: load dataset, make mask list
-        pass
+        dataset_imgs = None
+        dataset_masks = None
+        dataset_labels = None
+        dataset_bboxes = None
+
+        dataset = [dataset_imgs, dataset_masks, dataset_labels, dataset_bboxes]
+
+        for i, p in enumerate(path):
+            _, ext = os.path.splitext(p)
+
+            if ext == '.h5':
+                f = h5py.File(p, 'r')
+                dataset[i] = f['data']
+
+            if ext == '.npy':
+                f = np.load(p, allow_pickle=True)
+                import ipdb
+                ipdb.set_trace()
+                dataset[i] = f['data']
 
         # output:
         # transed_img
         # label
         # transed_mask
         # transed_bbox
+
     def __getitem__(self, index):
         # TODO: __getitem__
 
@@ -66,6 +87,7 @@ class BuildDataLoader(torch.utils.data.DataLoader):
     def loader(self):
         # TODO: return a dataloader
         pass
+
 
         # Visualize debugging
 if __name__ == '__main__':

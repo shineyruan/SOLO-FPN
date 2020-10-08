@@ -88,14 +88,17 @@ class SOLOHead(nn.Module):
         # cate_pred_list: list, len(fpn_level), each (bz,S,S,C-1) / after point_NMS
         # ins_pred_list: list, len(fpn_level), each (bz, S^2, Ori_H, Ori_W) / after upsampling
 
-    def forward(self,
-                fpn_feat_list,
-                eval=False):
+    def forward(self, fpn_feat_list, eval=False):
         new_fpn_list = self.NewFPN(fpn_feat_list)  # stride[8,8,16,32,32]
         assert new_fpn_list[0].shape[1:] == (256, 100, 136)
         quart_shape = [new_fpn_list[0].shape[-2] * 2,
                        new_fpn_list[0].shape[-1] * 2]  # stride: 4
-        # TODO: use MultiApply to compute cate_pred_list, ins_pred_list. Parallel w.r.t. feature level.
+        # use MultiApply to compute cate_pred_list, ins_pred_list. Parallel w.r.t. feature level.
+        cate_pred_list, ins_pred_list = self.MultiApply(self.forward_single_level,
+                                                        new_fpn_list,
+                                                        list(range(len(new_fpn_list))),
+                                                        eval=eval, upsample_shape=quart_shape)
+
         assert len(new_fpn_list) == len(self.seg_num_grids)
 
         # assert cate_pred_list[1].shape[1] == self.cate_out_channels
@@ -110,7 +113,7 @@ class SOLOHead(nn.Module):
     # Output:
     # new_fpn_list, list, len(FPN), stride[8,8,16,32,32]
     def NewFPN(self, fpn_feat_list):
-        pass
+        return None
 
     # This function forward a single level of fpn_featmap through the network
     # Input:
