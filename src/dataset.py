@@ -56,14 +56,14 @@ class BuildDataset(torch.utils.data.Dataset):
     # in the input mini-batch
     # input:
         # img: 3*300*400
-        # mask: 3*300*400
+        # mask: n_box*300*400
         # bbox: n_box*4
     def pre_process_batch(self, img, mask, bbox):
         # TODO: image preprocess
 
         # check flag
         assert img.shape == (3, 800, 1088)
-        assert bbox.shape[0] == mask.squeeze(0).shape[0]
+        assert bbox.shape[0] == mask.shape[0]
         return img, mask, bbox
 
 
