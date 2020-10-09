@@ -53,23 +53,74 @@ class SOLOHead(nn.Module):
         assert len(self.ins_head) == self.stacked_convs
         assert len(self.cate_head) == self.stacked_convs
         assert len(self.ins_out_list) == len(self.strides)
-        pass
 
     # This function build network layer for cate and ins branch
     # it builds 4 self.var
         # self.cate_head is nn.ModuleList 7 inter-layers of conv2d
         # self.ins_head is nn.ModuleList 7 inter-layers of conv2d
         # self.cate_out is 1 out-layer of conv2d
-        # self.ins_out_list is nn.ModuleList len(self.seg_num_grids) out-layers of conv2d, one for each fpn_feat
+        # self.ins_out_list is nn.ModuleList len(self.seg_num_grids) out-layers of conv2d,
+        #   one for each fpn_feat
     def _init_layers(self):
-        # TODO initialize layers: stack intermediate layer and output layer
+        # initialize layers: stack intermediate layer and output layer
         # define groupnorm
         num_groups = 32
         # initial the two branch head modulelist
         self.cate_head = nn.ModuleList()
         self.ins_head = nn.ModuleList()
 
-        pass
+        # Initialize category branch
+        self.cate_head.append(nn.Conv2d(in_channels=self.in_channels,
+                                        out_channels=256,
+                                        kernel_size=3,
+                                        stride=1,
+                                        padding=1,
+                                        bias=False))
+        self.cate_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
+        self.cate_head.append(nn.ReLU())
+        #   add 6 intermediate convolution layers
+        for _ in range(6):
+            self.cate_head.append(nn.Conv2d(in_channels=256,
+                                            out_channels=256,
+                                            kernel_size=3,
+                                            stride=1,
+                                            padding=1,
+                                            bias=False))
+            self.cate_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
+            self.cate_head.append(nn.ReLU())
+        # add output convolution layer
+        self.cate_head.append(nn.Conv2d(in_channels=256,
+                                        out_channels=self.num_classes,
+                                        kernel_size=3,
+                                        padding=1,
+                                        bias=True))
+        self.cate_head.append(nn.Sigmoid())
+
+        # Initialize mask branch
+        self.ins_head.append(nn.Conv2d(in_channels=self.in_channels + 2,
+                                       out_channels=256,
+                                       kernel_size=3,
+                                       stride=1,
+                                       padding=1,
+                                       bias=False))
+        self.ins_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
+        self.ins_head.append(nn.ReLU())
+        # add 6 intermediate convolution layers
+        for _ in range(6):
+            self.ins_head.append(nn.Conv2d(in_channels=256,
+                                           out_channels=256,
+                                           kernel_size=3,
+                                           stride=1,
+                                           padding=1,
+                                           bias=False))
+            self.ins_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
+            self.ins_head.append(nn.ReLU())
+        # add output convolution layer
+        self.ins_head.append(nn.Conv2d(in_channels=256,
+                                       out_channels=self.seg_num_grids**2,
+                                       kernel_size=1,
+                                       bias=True))
+        self.ins_head.append(nn.Sigmoid())
 
     # This function initialize weights for head network
     def _init_weights(self):
