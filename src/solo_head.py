@@ -122,10 +122,16 @@ class SOLOHead(nn.Module):
                                        bias=True))
         self.ins_head.append(nn.Sigmoid())
 
+        # Initialize weights
+        self.cate_head.apply(self._init_weights)
+        self.ins_head.apply(self._init_weights)
+
     # This function initialize weights for head network
-    def _init_weights(self):
-        # TODO: initialize the weights
-        pass
+    def _init_weights(self, m):
+        # initialize the weights
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_uniform_(m.weight)
+            m.bias.data.fill_(0.0)
 
     # Forward function should forward every levels in the FPN.
     # this is done by map function or for loop
