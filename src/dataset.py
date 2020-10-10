@@ -14,7 +14,7 @@ import os
 
 class BuildDataset(torch.utils.data.Dataset):
     def __init__(self, path):
-        # TODO: load dataset, make mask list
+        # load dataset, make mask list
         dataset_imgs = None
         dataset_masks = None
         dataset_labels = None
@@ -27,13 +27,57 @@ class BuildDataset(torch.utils.data.Dataset):
 
             if ext == '.h5':
                 f = h5py.File(p, 'r')
-                dataset[i] = f['data']
+                dataset[i] = np.array(f['data'])
 
             if ext == '.npy':
-                f = np.load(p, allow_pickle=True)
-                import ipdb
-                ipdb.set_trace()
-                dataset[i] = f['data']
+                dataset[i] = np.load(p, allow_pickle=True)
+
+        import pdb; pdb.set_trace()
+        self.imgs_data = dataset[0].astype(float)
+        self.imgs_data /= 255.0
+        self.imgs_data = torch.tensor(self.imgs_data)
+        self.imgs_data = F.interpolate(self.imgs_data, size=1066)
+        self.imgs_data = self.imgs_data.permute(0, 1, 3, 2)
+        self.imgs_data = F.interpolate(img, size=800)
+        self.imgs_data = self.imgs_data.permute(0, 1, 3, 2)
+        for i in range(self.imgs_data.shape[0]):
+            self.imgs_data[i] = transforms.functional.normalize(
+                self.imgs_data[i], mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        self.imgs_data = F.pad(self.imgs_data[i], pad=(11, 11))
+        import pdb; pdb.set_trace()
+
+        self.label_data = dataset[2]
+
+        # self.masks_data: numpy ndarrays
+        self.masks_data = []
+        mask_id = 0
+        for img_id in range(self.label_data.shape[0]):
+            mask_list = []
+            for mask_id in range(self.label_data[img_id].shape[0]):
+                mask_list.append(dataset[1][mask_id])
+                mask_id += 1
+            mask_list = np.stack(mask_list)
+            self.masks_data.append(mask_list)
+        # self.masks_data = np.asarray(self.masks_data)
+
+        self.bbox_data = dataset[3]
+        import pdb
+        pdb.set_trace()
+        # all processed data are lists of tensors
+        self.imgs_processed = []
+        self.mask_processed = []
+        self.bbox_processed = []
+        self.label_processed = []
+        for id in range(self.imgs_data.shape[0]):
+            print(id, "/", self.imgs_data.shape[0])
+            img, mask, bbox = self.pre_process_batch(
+                self.imgs_data[id], self.masks_data[id], self.bbox_data[id])
+            self.imgs_processed.append(img)
+            self.mask_processed.append(mask)
+            self.bbox_processed.append(bbox)
+            self.label_processed.append(torch.tensor(self.label_data[id]))
+        import pdb
+        pdb.set_trace()
 
         # output:
         # transed_img
@@ -42,8 +86,11 @@ class BuildDataset(torch.utils.data.Dataset):
         # transed_bbox
 
     def __getitem__(self, index):
-        # TODO: __getitem__
-
+        # __getitem__
+        transed_img = self.imgs_data[index]
+        transed_bbox = self.bbox_data[index]
+        transed_mask = self.masks_data[index]
+        label = self.label_data[index]
         # check flag
         assert transed_img.shape == (3, 800, 1088)
         assert transed_bbox.shape[0] == transed_mask.shape[0]
@@ -59,7 +106,30 @@ class BuildDataset(torch.utils.data.Dataset):
         # mask: n_box*300*400
         # bbox: n_box*4
     def pre_process_batch(self, img, mask, bbox):
-        # TODO: image preprocess
+        # image preprocess
+        img = img.astype(float)
+        img /= 255.0
+        img = torch.tensor(img)
+        img = F.interpolate(img, size=1066)
+        img = img.permute(0, 2, 1)
+        img = F.interpolate(img, size=800)
+        img = img.permute(0, 2, 1)
+        img = transforms.functional.normalize(
+            img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        img = F.pad(img, pad=(11, 11))
+
+        mask = torch.from_numpy(mask.astype(np.uint8))
+        mask = F.interpolate(mask, size=1066)
+        mask = mask.permute(0, 2, 1)
+        mask = F.interpolate(mask, size=800)
+        mask = mask.permute(0, 2, 1)
+        mask = F.pad(mask, pad=(11, 11))
+
+        bbox[:, 0] = bbox[:, 0] / 400 * 1066 + 11
+        bbox[:, 2] = bbox[:, 2] / 400 * 1066 + 11
+        bbox[:, 1] = bbox[:, 1] / 300 * 800
+        bbox[:, 3] = bbox[:, 3] / 300 * 800
+        bbox = torch.tensor(bbox)
 
         # check flag
         assert img.shape == (3, 800, 1088)
@@ -79,7 +149,6 @@ class BuildDataLoader(torch.utils.data.DataLoader):
         # label_list: list, len:bz, each (n_obj,)
         # transed_mask_list: list, len:bz, each (n_obj, 800,1088)
         # transed_bbox_list: list, len:bz, each (n_obj, 4)
-        # img: (bz, 3, 300, 400)
     def collect_fn(self, batch):
         # TODO: collect_fn
         pass
@@ -99,7 +168,8 @@ if __name__ == '__main__':
     paths = [imgs_path, masks_path, labels_path, bboxes_path]
     # load the data into data.Dataset
     dataset = BuildDataset(paths)
-
+    import pdb
+    pdb.set_trace()
     # Visualize debugging
     # --------------------------------------------
     # build the dataloader
