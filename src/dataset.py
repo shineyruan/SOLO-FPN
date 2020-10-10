@@ -15,10 +15,10 @@ import os
 class BuildDataset(torch.utils.data.Dataset):
     def __init__(self, path):
         # load dataset, make mask list
-        dataset_imgs = None
-        dataset_masks = None
-        dataset_labels = None
-        dataset_bboxes = None
+        dataset_imgs = np.array([])
+        dataset_masks = np.array([])
+        dataset_labels = np.array([])
+        dataset_bboxes = np.array([])
 
         dataset = [dataset_imgs, dataset_masks, dataset_labels, dataset_bboxes]
 
@@ -134,8 +134,9 @@ class BuildDataLoader(torch.utils.data.DataLoader):
                           num_workers=self.num_workers,
                           collate_fn=self.collect_fn)
 
-
         # Visualize debugging
+
+
 if __name__ == '__main__':
     # file path and make a list
     imgs_path = './data/hw3_mycocodata_img_comp_zlib.h5'
