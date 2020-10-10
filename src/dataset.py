@@ -111,12 +111,29 @@ class BuildDataLoader(torch.utils.data.DataLoader):
         # transed_mask_list: list, len:bz, each (n_obj, 800,1088)
         # transed_bbox_list: list, len:bz, each (n_obj, 4)
     def collect_fn(self, batch):
-        # TODO: collect_fn
-        pass
+        # collect_fn
+        transed_img_list = []
+        label_list = []
+        transed_mask_list = []
+        transed_bbox_list = []
+        for transed_img, label, transed_mask, transed_bbox in batch:
+            transed_img_list.append(transed_img)
+            label_list.append(label)
+            transed_mask_list.append(transed_mask)
+            transed_bbox_list.append(transed_bbox)
+        return torch.stack(transed_img_list, dim=0),\
+            label_list,\
+            transed_mask_list,\
+            transed_bbox_list
 
     def loader(self):
-        # TODO: return a dataloader
-        pass
+        # return a dataloader
+        return DataLoader(self.dataset,
+                          batch_size=self.batch_size,
+                          shuffle=self.shuffle,
+                          num_workers=self.num_workers,
+                          collate_fn=self.collect_fn)
+
 
         # Visualize debugging
 if __name__ == '__main__':
@@ -128,8 +145,7 @@ if __name__ == '__main__':
     paths = [imgs_path, masks_path, labels_path, bboxes_path]
     # load the data into data.Dataset
     dataset = BuildDataset(paths)
-    import pdb
-    pdb.set_trace()
+
     # Visualize debugging
     # --------------------------------------------
     # build the dataloader
