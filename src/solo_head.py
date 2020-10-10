@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from scipy import ndimage
-from dataset import *
+from dataset import BuildDataLoader, BuildDataset
 from functools import partial
 
 
@@ -134,7 +134,8 @@ class SOLOHead(nn.Module):
         # initialize the weights
         if isinstance(m, nn.Conv2d):
             nn.init.xavier_uniform_(m.weight)
-            m.bias.data.fill_(0.0)
+            if m.bias is not None:
+                m.bias.data.fill_(0.0)
 
     # Forward function should forward every levels in the FPN.
     # this is done by map function or for loop
@@ -243,7 +244,7 @@ class SOLOHead(nn.Module):
             [ins_bz, ins_channel, 2 * H_feat, 2 * W_feat]), mode='bilinear')
 
         # in inference time, upsample the pred to (ori image size/4)
-        if eval == True:
+        if eval:
             # resize ins_pred
             bz, s_2, _, _ = ins_pred.size()   # use original H_feat, W_feat here
             ins_pred = nn.functional.interpolate(
@@ -254,7 +255,7 @@ class SOLOHead(nn.Module):
             cate_pred = cate_pred.transpose(0, 2, 3, 1)  # reshape to (bz, S, S, C-1)
 
         # check flag
-        if eval == False:
+        if not eval:
             assert cate_pred.shape[1:] == (3, num_grid, num_grid)
             assert ins_pred.shape[1:] == (
                 num_grid**2, fpn_feat.shape[2] * 2, fpn_feat.shape[3] * 2)
@@ -435,7 +436,7 @@ class SOLOHead(nn.Module):
         # cate_gts_list: list, len(bz), list, len(fpn), (S, S), {1,2,3}
         # color_list: list, len(C-1)
         # img: (bz,3,Ori_H, Ori_W)
-        ## self.strides: [8,8,16,32,32]
+        # self.strides: [8,8,16,32,32]
     def PlotGT(self,
                ins_gts_list,
                ins_ind_gts_list,
@@ -464,7 +465,7 @@ class SOLOHead(nn.Module):
         pass
 
 
-from backbone import *
+from backbone import Resnet50Backbone
 if __name__ == '__main__':
     # file path and make a list
     imgs_path = './data/hw3_mycocodata_img_comp_zlib.h5'
