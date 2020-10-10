@@ -72,24 +72,25 @@ class SOLOHead(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
         # Initialize category branch
-        self.cate_head.append(nn.Conv2d(in_channels=self.in_channels,
-                                        out_channels=256,
-                                        kernel_size=3,
-                                        stride=1,
-                                        padding=1,
-                                        bias=False))
-        self.cate_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
-        self.cate_head.append(nn.ReLU())
+        self.cate_head.append(nn.Sequential(nn.Conv2d(in_channels=self.in_channels,
+                                                      out_channels=256,
+                                                      kernel_size=3,
+                                                      stride=1,
+                                                      padding=1,
+                                                      bias=False),
+                                            nn.GroupNorm(num_groups=num_groups, num_channels=256),
+                                            nn.ReLU()))
         #   add 6 intermediate convolution layers
         for _ in range(6):
-            self.cate_head.append(nn.Conv2d(in_channels=256,
-                                            out_channels=256,
-                                            kernel_size=3,
-                                            stride=1,
-                                            padding=1,
-                                            bias=False))
-            self.cate_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
-            self.cate_head.append(nn.ReLU())
+            self.cate_head.append(nn.Sequential(nn.Conv2d(in_channels=256,
+                                                          out_channels=256,
+                                                          kernel_size=3,
+                                                          stride=1,
+                                                          padding=1,
+                                                          bias=False),
+                                                nn.GroupNorm(num_groups=num_groups,
+                                                             num_channels=256),
+                                                nn.ReLU()))
         # add output convolution layer
         self.cate_out = nn.Conv2d(in_channels=256,
                                   out_channels=self.cate_out_channels,
@@ -98,24 +99,25 @@ class SOLOHead(nn.Module):
                                   bias=True)
 
         # Initialize mask branch
-        self.ins_head.append(nn.Conv2d(in_channels=self.in_channels + 2,
-                                       out_channels=256,
-                                       kernel_size=3,
-                                       stride=1,
-                                       padding=1,
-                                       bias=False))
-        self.ins_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
-        self.ins_head.append(nn.ReLU())
+        self.ins_head.append(nn.Sequential(nn.Conv2d(in_channels=self.in_channels + 2,
+                                                     out_channels=256,
+                                                     kernel_size=3,
+                                                     stride=1,
+                                                     padding=1,
+                                                     bias=False),
+                                           nn.GroupNorm(num_groups=num_groups, num_channels=256),
+                                           nn.ReLU()))
         # add 6 intermediate convolution layers
         for _ in range(6):
-            self.ins_head.append(nn.Conv2d(in_channels=256,
-                                           out_channels=256,
-                                           kernel_size=3,
-                                           stride=1,
-                                           padding=1,
-                                           bias=False))
-            self.ins_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
-            self.ins_head.append(nn.ReLU())
+            self.ins_head.append(nn.Sequential(nn.Conv2d(in_channels=256,
+                                                         out_channels=256,
+                                                         kernel_size=3,
+                                                         stride=1,
+                                                         padding=1,
+                                                         bias=False),
+                                               nn.GroupNorm(num_groups=num_groups,
+                                                            num_channels=256),
+                                               nn.ReLU()))
         # add output convolution layer
         for num_grid in self.seg_num_grids:
             self.ins_out_list.append(nn.Conv2d(in_channels=256,
