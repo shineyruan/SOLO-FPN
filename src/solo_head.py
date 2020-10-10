@@ -67,6 +67,9 @@ class SOLOHead(nn.Module):
         # initial the two branch head modulelist
         self.cate_head = nn.ModuleList()
         self.ins_head = nn.ModuleList()
+        self.cate_out = None
+        self.ins_out_list = nn.ModuleList()
+        self.sigmoid = nn.Sigmoid()
 
         # Initialize category branch
         self.cate_head.append(nn.Conv2d(in_channels=self.in_channels,
@@ -88,12 +91,11 @@ class SOLOHead(nn.Module):
             self.cate_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
             self.cate_head.append(nn.ReLU())
         # add output convolution layer
-        self.cate_head.append(nn.Conv2d(in_channels=256,
-                                        out_channels=self.num_classes,
-                                        kernel_size=3,
-                                        padding=1,
-                                        bias=True))
-        self.cate_head.append(nn.Sigmoid())
+        self.cate_out = nn.Conv2d(in_channels=256,
+                                  out_channels=self.cate_out_channels,
+                                  kernel_size=3,
+                                  padding=1,
+                                  bias=True)
 
         # Initialize mask branch
         self.ins_head.append(nn.Conv2d(in_channels=self.in_channels + 2,
@@ -115,15 +117,17 @@ class SOLOHead(nn.Module):
             self.ins_head.append(nn.GroupNorm(num_groups=num_groups, num_channels=256))
             self.ins_head.append(nn.ReLU())
         # add output convolution layer
-        self.ins_head.append(nn.Conv2d(in_channels=256,
-                                       out_channels=self.seg_num_grids**2,
-                                       kernel_size=1,
-                                       bias=True))
-        self.ins_head.append(nn.Sigmoid())
+        for num_grid in self.seg_num_grids:
+            self.ins_out_list.append(nn.Conv2d(in_channels=256,
+                                               out_channels=num_grid**2,
+                                               kernel_size=1,
+                                               bias=True))
 
         # Initialize weights
         self.cate_head.apply(self._init_weights)
         self.ins_head.apply(self._init_weights)
+        self.cate_out.apply(self._init_weights)
+        self.ins_out_list.apply(self._init_weights)
 
     # This function initialize weights for head network
     def _init_weights(self, m):
@@ -169,7 +173,35 @@ class SOLOHead(nn.Module):
     # Output:
     # new_fpn_list, list, len(FPN), stride[8,8,16,32,32]
     def NewFPN(self, fpn_feat_list):
+        # TODO: finish this function
         return fpn_feat_list
+
+    def _append_xy_coordinates(self, fpn_feat):
+        """
+        ---- ZHIHAO RUAN 2020-10-10 02:56
+        This function apopends the normalized x/y coordinates to fpn_featmap 
+        according to its dimensions
+
+        Input:
+            fpn_feat: (bz, fpn_channels(256), H_feat, W_feat)
+        Output:
+            fpn_feat: (bz, fpn_channels(256) + 2, H_feat, W_feat)
+
+        """
+        # construct normalized x,y coordinates
+        feat_bz, _, feat_H, feat_W = fpn_feat.size()
+        normalized_x_feat = torch.stack([torch.Tensor(range(feat_W)) for _ in range(feat_H)])
+        normalized_x_feat /= feat_W
+        normalized_y_feat = torch.stack([torch.Tensor([i for _ in range(feat_W)])
+                                         for i in range(feat_H)])
+        normalized_y_feat /= feat_H
+        # expand coordinates and repeats along batch & channel dimension
+        normalized_x_feat = normalized_x_feat.repeat(feat_bz, 1, 1, 1)
+        normalized_y_feat = normalized_y_feat.repeat(feat_bz, 1, 1, 1)
+        # concatenate them along the channel dimension
+        fpn_feat = torch.cat([fpn_feat, normalized_x_feat, normalized_y_feat], dim=1)
+
+        return fpn_feat
 
     # This function forward a single level of fpn_featmap through the network
     # Input:
@@ -182,20 +214,44 @@ class SOLOHead(nn.Module):
         # if eval==True
         # cate_pred: (bz,S,S,C-1) / after point_NMS
         # ins_pred: (bz, S^2, Ori_H/4, Ori_W/4) / after upsampling
-
     def forward_single_level(self, fpn_feat, idx, eval=False, upsample_shape=None):
         # upsample_shape is used in eval mode
-        # TODO: finish forward function for single level in FPN.
         # Notice, we distinguish the training and inference.
         cate_pred = fpn_feat
         ins_pred = fpn_feat
         num_grid = self.seg_num_grids[idx]  # current level grid
 
+        # Forward category head
+        for layer in self.cate_head:
+            cate_pred = layer(cate_pred)
+        cate_pred = self.sigmoid(self.cate_out(cate_pred))
+        # resize category branch output to SxS
+        cate_bz, cate_channel, _, _ = cate_pred.size()
+        cate_pred = nn.functional.interpolate(cate_pred, torch.Size(
+            [cate_bz, cate_channel, num_grid, num_grid]), mode='bilinear')
+
+        # Forward mask head
+        # append normalized x, y coordinates to current input
+        ins_pred = self._append_xy_coordinates(ins_pred)
+        # forward the constructed layer
+        for layer in self.ins_head:
+            ins_pred = layer(ins_pred)
+        ins_pred = self.sigmoid(self.ins_out_list[idx](ins_pred))
+        # upsampling to 2*H_feat, 2*W_feat
+        ins_bz, ins_channel, H_feat, W_feat = ins_pred.size()
+        ins_pred = nn.functional.interpolate(ins_pred, torch.Size(
+            [ins_bz, ins_channel, 2 * H_feat, 2 * W_feat]), mode='bilinear')
+
         # in inference time, upsample the pred to (ori image size/4)
         if eval == True:
-            # TODO resize ins_pred
+            # resize ins_pred
+            bz, s_2, _, _ = ins_pred.size()   # use original H_feat, W_feat here
+            ins_pred = nn.functional.interpolate(
+                ins_pred, torch.Size([bz, s_2, H_feat // 4, W_feat // 4]), mode='bilinear')
 
             cate_pred = self.points_nms(cate_pred).permute(0, 2, 3, 1)
+            # FIXME: is it (batch, H, W, C) or (batch, W, H, C)?
+            cate_pred = cate_pred.transpose(0, 2, 3, 1)  # reshape to (bz, S, S, C-1)
 
         # check flag
         if eval == False:
