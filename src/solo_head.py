@@ -47,7 +47,6 @@ class SOLOHead(nn.Module):
         self.postprocess_cfg = postprocess_cfg
         # initialize the layers for cate and mask branch, and initialize the weights
         self._init_layers()
-        self._init_weights()
 
         # check flag
         assert len(self.ins_head) == self.stacked_convs
@@ -170,7 +169,7 @@ class SOLOHead(nn.Module):
     # Output:
     # new_fpn_list, list, len(FPN), stride[8,8,16,32,32]
     def NewFPN(self, fpn_feat_list):
-        return None
+        return fpn_feat_list
 
     # This function forward a single level of fpn_featmap through the network
     # Input:
@@ -235,7 +234,7 @@ class SOLOHead(nn.Module):
              ins_gts_list,
              ins_ind_gts_list,
              cate_gts_list):
-        # TODO: compute loss, vecterize this part will help a lot. To avoid potential
+        # TODO: compute loss, vectorize this part will help a lot. To avoid potential
         #   ill-conditioning, if necessary, add a very small number to denominator for
         #   focalloss and diceloss computation.
         pass
