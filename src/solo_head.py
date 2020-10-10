@@ -142,7 +142,7 @@ class SOLOHead(nn.Module):
         # ins_pred_list: list, len(fpn_level), each (bz, S^2, 2H_feat, 2W_feat)
         # if eval==True
         # cate_pred_list: list, len(fpn_level), each (bz,S,S,C-1) / after point_NMS
-        # ins_pred_list: list, len(fpn_level), each (bz, S^2, Ori_H, Ori_W) / after upsampling
+        # ins_pred_list: list, len(fpn_level), each (bz, S^2, Ori_H/4, Ori_W/4) / after upsampling
 
     def forward(self, fpn_feat_list, eval=False):
         new_fpn_list = self.NewFPN(fpn_feat_list)  # stride[8,8,16,32,32]
