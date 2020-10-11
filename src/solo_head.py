@@ -333,21 +333,22 @@ class SOLOHead(nn.Module):
         # ins_gts_list: list, len(bz), list, len(fpn), (S^2, 2H_f, 2W_f)
         # ins_ind_gts_list: list, len(bz), list, len(fpn), (S^2,)
         # cate_gts_list: list, len(bz), list, len(fpn), (S, S), {1,2,3}
-    def target(self,
-               ins_pred_list,
-               bbox_list,
-               label_list,
-               mask_list):
-        # TODO: use MultiApply to compute ins_gts_list, ins_ind_gts_list, cate_gts_list.
+    def target(self, ins_pred_list, bbox_list, label_list, mask_list):
+        # use MultiApply to compute ins_gts_list, ins_ind_gts_list, cate_gts_list.
         #       Parallel w.r.t. img mini-batch
         # remember, you want to construct target of the same resolution as prediction output
         #   in training
 
+        ins_gts_list, ins_ind_gts_list, cate_gts_list = self.MultiApply(self.forward_single_level,
+                                                                        bbox_list,
+                                                                        label_list,
+                                                                        mask_list,
+                                                                        featmap_sizes=ins_pred_list)
+
         # check flag
         assert ins_gts_list[0][1].shape == (self.seg_num_grids[1]**2, 200, 272)
         assert ins_ind_gts_list[0][1].shape == (self.seg_num_grids[1]**2,)
-        assert cate_gts_list[0][1].shape == (
-            self.seg_num_grids[1], self.seg_num_grids[1])
+        assert cate_gts_list[0][1].shape == (self.seg_num_grids[1], self.seg_num_grids[1])
 
         return ins_gts_list, ins_ind_gts_list, cate_gts_list
     # -----------------------------------
@@ -363,7 +364,7 @@ class SOLOHead(nn.Module):
         # cate_label_list: list, len: len(FPN), (S, S)
         # ins_ind_label_list: list, len: len(FPN), (S^2, )
 
-    def targer_single_img(self,
+    def target_single_img(self,
                           gt_bboxes_raw,
                           gt_labels_raw,
                           gt_masks_raw,
