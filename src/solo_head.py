@@ -150,7 +150,6 @@ class SOLOHead(nn.Module):
         # if eval==True
         # cate_pred_list: list, len(fpn_level), each (bz,S,S,C-1) / after point_NMS
         # ins_pred_list: list, len(fpn_level), each (bz, S^2, Ori_H/4, Ori_W/4) / after upsampling
-
     def forward(self, fpn_feat_list, eval=False):
         new_fpn_list = self.NewFPN(fpn_feat_list)  # stride[8,8,16,32,32]
         assert new_fpn_list[0].shape[1:] == (256, 100, 136)
@@ -176,8 +175,15 @@ class SOLOHead(nn.Module):
     # Output:
     # new_fpn_list, list, len(FPN), stride[8,8,16,32,32]
     def NewFPN(self, fpn_feat_list):
-        # TODO: finish this function
-        return fpn_feat_list
+        # finish this function
+        new_fpn_list = fpn_feat_list
+        # resize first level to 1/2
+        _, _, H, W = new_fpn_list[0].size()
+        new_fpn_list[0] = nn.functional.interpolate(new_fpn_list[0], torch.Size([H // 2, W // 2]))
+        # resize last level to 2
+        _, _, H, W = new_fpn_list[-1].size()
+        new_fpn_list[-1] = nn.functional.interpolate(new_fpn_list[-1], torch.Size([2 * H, 2 * W]))
+        return new_fpn_list
 
     def _append_xy_coordinates(self, fpn_feat):
         """
@@ -225,36 +231,29 @@ class SOLOHead(nn.Module):
         num_grid = self.seg_num_grids[idx]  # current level grid
 
         # Forward category head
-        for layer in self.cate_head:
-            cate_pred = layer(cate_pred)
+        for i in range(len(self.cate_head)):
+            cate_pred = self.cate_head[i](cate_pred)
         cate_pred = self.sigmoid(self.cate_out(cate_pred))
         # resize category branch output to SxS
-        cate_bz, cate_channel, _, _ = cate_pred.size()
-        cate_pred = nn.functional.interpolate(cate_pred, torch.Size(
-            [cate_bz, cate_channel, num_grid, num_grid]), mode='bilinear')
+        cate_pred = nn.functional.interpolate(cate_pred, torch.Size([num_grid, num_grid]))
 
         # Forward mask head
         # append normalized x, y coordinates to current input
         ins_pred = self._append_xy_coordinates(ins_pred)
         # forward the constructed layer
-        for layer in self.ins_head:
-            ins_pred = layer(ins_pred)
+        for i in range(len(self.ins_head)):
+            ins_pred = self.ins_head[i](ins_pred)
         ins_pred = self.sigmoid(self.ins_out_list[idx](ins_pred))
+
         # upsampling to 2*H_feat, 2*W_feat
-        ins_bz, ins_channel, H_feat, W_feat = ins_pred.size()
-        ins_pred = nn.functional.interpolate(ins_pred, torch.Size(
-            [ins_bz, ins_channel, 2 * H_feat, 2 * W_feat]), mode='bilinear')
+        _, _, H_feat, W_feat = ins_pred.size()
+        ins_pred = nn.functional.interpolate(ins_pred, torch.Size([2 * H_feat, 2 * W_feat]))
 
         # in inference time, upsample the pred to (ori image size/4)
         if eval:
             # resize ins_pred
-            bz, s_2, _, _ = ins_pred.size()   # use original H_feat, W_feat here
-            ins_pred = nn.functional.interpolate(
-                ins_pred, torch.Size([bz, s_2, H_feat // 4, W_feat // 4]), mode='bilinear')
-
+            ins_pred = nn.functional.interpolate(ins_pred, torch.Size([H_feat // 4, W_feat // 4]))
             cate_pred = self.points_nms(cate_pred).permute(0, 2, 3, 1)
-            # FIXME: is it (batch, H, W, C) or (batch, W, H, C)?
-            cate_pred = cate_pred.transpose(0, 2, 3, 1)  # reshape to (bz, S, S, C-1)
 
         # check flag
         if not eval:
@@ -508,16 +507,14 @@ if __name__ == '__main__':
     # loop the image
     # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     for iter, data in enumerate(train_loader, 0):
-        img, label_list, mask_list, bbox_list = [
-            data[i] for i in range(len(data))]
+        img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
         # fpn is a dict
         backout = resnet50_fpn(img)
         fpn_feat_list = list(backout.values())
         # make the target
 
         # demo
-        cate_pred_list, ins_pred_list = solo_head.forward(
-            fpn_feat_list, eval=False)
+        cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list, eval=False)
         ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
                                                                          bbox_list,
                                                                          label_list,
