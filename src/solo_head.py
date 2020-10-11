@@ -150,7 +150,7 @@ class SOLOHead(nn.Module):
         # if eval==True
         # cate_pred_list: list, len(fpn_level), each (bz,S,S,C-1) / after point_NMS
         # ins_pred_list: list, len(fpn_level), each (bz, S^2, Ori_H/4, Ori_W/4) / after upsampling
-    def forward(self, fpn_feat_list, eval=False):
+    def forward(self, fpn_feat_list, device, eval=False):
         new_fpn_list = self.NewFPN(fpn_feat_list)  # stride[8,8,16,32,32]
         assert new_fpn_list[0].shape[1:] == (256, 100, 136)
         quart_shape = [new_fpn_list[0].shape[-2] * 2,
@@ -159,7 +159,9 @@ class SOLOHead(nn.Module):
         cate_pred_list, ins_pred_list = self.MultiApply(self.forward_single_level,
                                                         new_fpn_list,
                                                         list(range(len(new_fpn_list))),
-                                                        eval=eval, upsample_shape=quart_shape)
+                                                        device=device,
+                                                        eval=eval,
+                                                        upsample_shape=quart_shape)
 
         assert len(new_fpn_list) == len(self.seg_num_grids)
 
@@ -185,10 +187,10 @@ class SOLOHead(nn.Module):
         new_fpn_list[-1] = nn.functional.interpolate(new_fpn_list[-1], torch.Size([2 * H, 2 * W]))
         return new_fpn_list
 
-    def _append_xy_coordinates(self, fpn_feat):
+    def _append_xy_coordinates(self, fpn_feat, device):
         """
         ---- ZHIHAO RUAN 2020-10-10 02:56
-        This function apopends the normalized x/y coordinates to fpn_featmap 
+        This function apopends the normalized x/y coordinates to fpn_featmap
         according to its dimensions
 
         Input:
@@ -199,10 +201,11 @@ class SOLOHead(nn.Module):
         """
         # construct normalized x,y coordinates
         feat_bz, _, feat_H, feat_W = fpn_feat.size()
-        normalized_x_feat = torch.stack([torch.Tensor(range(feat_W)) for _ in range(feat_H)])
+        normalized_x_feat = torch.stack([torch.Tensor(range(feat_W))
+                                         for _ in range(feat_H)]).to(device)
         normalized_x_feat /= feat_W
         normalized_y_feat = torch.stack([torch.Tensor([i for _ in range(feat_W)])
-                                         for i in range(feat_H)])
+                                         for i in range(feat_H)]).to(device)
         normalized_y_feat /= feat_H
         # expand coordinates and repeats along batch & channel dimension
         normalized_x_feat = normalized_x_feat.repeat(feat_bz, 1, 1, 1)
@@ -223,7 +226,7 @@ class SOLOHead(nn.Module):
         # if eval==True
         # cate_pred: (bz,S,S,C-1) / after point_NMS
         # ins_pred: (bz, S^2, Ori_H/4, Ori_W/4) / after upsampling
-    def forward_single_level(self, fpn_feat, idx, eval=False, upsample_shape=None):
+    def forward_single_level(self, fpn_feat, idx, device="cpu", eval=False, upsample_shape=None):
         # upsample_shape is used in eval mode
         # Notice, we distinguish the training and inference.
         cate_pred = fpn_feat
@@ -235,11 +238,12 @@ class SOLOHead(nn.Module):
             cate_pred = self.cate_head[i](cate_pred)
         cate_pred = self.sigmoid(self.cate_out(cate_pred))
         # resize category branch output to SxS
-        cate_pred = nn.functional.interpolate(cate_pred, torch.Size([num_grid, num_grid]))
+        cate_pred = nn.functional.interpolate(cate_pred, torch.Size([num_grid, num_grid]),
+                                              mode='bilinear')
 
         # Forward mask head
         # append normalized x, y coordinates to current input
-        ins_pred = self._append_xy_coordinates(ins_pred)
+        ins_pred = self._append_xy_coordinates(ins_pred, device)
         # forward the constructed layer
         for i in range(len(self.ins_head)):
             ins_pred = self.ins_head[i](ins_pred)
@@ -372,14 +376,81 @@ class SOLOHead(nn.Module):
                           gt_labels_raw,
                           gt_masks_raw,
                           featmap_sizes=None):
-        # TODO: finish single image target build
-        # compute the area of every object in this single image
-        print(featmap_sizes)
-
+        # finish single image target build
         # initial the output list, each entry for one featmap
         ins_label_list = []
         ins_ind_label_list = []
         cate_label_list = []
+
+        # compute the area of every object in this single image
+        bbox_w = gt_bboxes_raw[:, 2] - gt_bboxes_raw[:, 0]
+        bbox_h = gt_bboxes_raw[:, 3] - gt_bboxes_raw[:, 1]
+        scales = torch.sqrt(bbox_w * bbox_h)
+
+        # group objects in the same level together
+        fpn_objects = [[] for _ in range(len(featmap_sizes))]
+        for i, scale in enumerate(scales):
+            if scale < 96:
+                fpn_objects[0].append(i)
+            if scale >= 48 and scale < 192:
+                fpn_objects[1].append(i)
+            if scale >= 96 and scale < 384:
+                fpn_objects[2].append(i)
+            if scale >= 192 and scale < 768:
+                fpn_objects[3].append(i)
+            if scale >= 384:
+                fpn_objects[4].append(i)
+
+        #  in each level, for all belonging objects, construct true labels
+        for i, group in enumerate(fpn_objects):
+            # extract dimensions
+            _, num_grid_2, H_feat, W_feat = featmap_sizes[i]
+            num_grid = int(np.sqrt(num_grid_2))
+            # initialize outputs
+            ins_label = torch.zeros(num_grid_2, H_feat, W_feat)
+            cate_label = torch.zeros(num_grid, num_grid)
+            ins_ind_label = torch.zeros(num_grid_2)
+
+            # iterate over each object in the level
+            for object_idx in group:
+                # find their center point and center region
+                c_y, c_x = ndimage.center_of_mass(gt_masks_raw[object_idx].numpy())
+                w = 0.2 * bbox_w[object_idx]
+                h = 0.2 * bbox_h[object_idx]
+
+                # Find their active grids
+                # compute center grid
+                center_grid_w = int(c_x / W_feat * num_grid)
+                center_grid_h = int(c_y / H_feat * num_grid)
+                # compute top, bottom, left right grid index
+                top_grid_idx = max(0, int((c_y - h / 2) / H_feat * num_grid))
+                bottom_grid_idx = min(num_grid - 1, int((c_y + h / 2) / H_feat * num_grid))
+                left_grid_idx = max(0, int((c_x - w / 2) / W_feat * num_grid))
+                right_grid_idx = min(num_grid - 1, int((c_x + w / 2) / W_feat * num_grid))
+                # constrain the region ob active grid within 3x3
+                top_idx = max(top_grid_idx, center_grid_h - 1)
+                bottom_idx = min(bottom_grid_idx, center_grid_h + 1)
+                left_idx = max(left_grid_idx, center_grid_w - 1)
+                right_idx = min(right_grid_idx, center_grid_w + 1)
+
+                # Activate the cate_label
+                cate_label[top_idx:bottom_idx + 1, left_idx:right_idx + 1] = \
+                    gt_labels_raw[object_idx]
+
+                # Assign the ins_label
+                for idx in range(top_idx, bottom_idx + 1):
+                    ins_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = \
+                        nn.functional.interpolate(gt_masks_raw[object_idx],
+                                                  torch.Size([H_feat, W_feat]))
+
+                # Activate the ins_ind_label
+                for idx in range(top_idx, bottom_idx + 1):
+                    ins_ind_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = 1
+
+            # append the output labels to list
+            ins_label_list.append(ins_label)
+            ins_ind_label_list.append(ins_ind_label)
+            cate_label_list.append(cate_label)
 
         # check flag
         assert ins_label_list[1].shape == (1296, 200, 272)
@@ -506,20 +577,29 @@ if __name__ == '__main__':
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     test_loader = test_build_loader.loader()
 
-    resnet50_fpn = Resnet50Backbone()
+    # detect device
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    resnet50_fpn = Resnet50Backbone().to(device)
     # class number is 4, because consider the background as one category.
-    solo_head = SOLOHead(num_classes=4)
+    solo_head = SOLOHead(num_classes=4).to("cpu")
     # loop the image
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     for iter, data in enumerate(train_loader, 0):
+        print("Iteration: %d", iter)
         img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
+        img = img.to(device)
+
         # fpn is a dict
         backout = resnet50_fpn(img)
-        fpn_feat_list = list(backout.values())
+        fpn_feat_list = []
+        for val in list(backout.values()):
+            fpn_feat_list.append(val.cpu())
         # make the target
 
         # demo
-        cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list, eval=False)
+        cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
+                                                          torch.device("cpu"),
+                                                          eval=False)
         ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
                                                                          bbox_list,
                                                                          label_list,
