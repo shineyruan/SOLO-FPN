@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 import os
+import cv2
 
 
 class BuildDataset(torch.utils.data.Dataset):
@@ -41,7 +42,7 @@ class BuildDataset(torch.utils.data.Dataset):
         mask_id = 0
         for img_id in range(self.label_data.shape[0]):
             mask_list = []
-            for mask_id in range(self.label_data[img_id].shape[0]):
+            for _ in range(self.label_data[img_id].shape[0]):
                 mask_list.append(dataset[1][mask_id].astype(np.uint8))
                 mask_id += 1
             mask_list = np.stack(mask_list)
@@ -77,6 +78,7 @@ class BuildDataset(torch.utils.data.Dataset):
         img = img.permute(0, 2, 1)
         img = transforms.functional.normalize(
             img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            # these should be corresponding mean and std of input data
         img = F.pad(img, pad=(11, 11))
 
         mask = torch.from_numpy(mask.astype(np.uint8))
@@ -137,6 +139,23 @@ class BuildDataLoader(torch.utils.data.DataLoader):
         # Visualize debugging
 
 
+def visual_bbox_mask(image, bboxs, masks):
+    # image: tensor, 3 * h * w 
+    outim = np.copy(image.numpy().transpose(1, 2, 0))
+    outim = (outim * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255
+    outim = outim.astype(np.uint8)
+    for i in range(bboxs.shape[0]):
+        x1, y1, x2, y2 = bboxs[i][0], bboxs[i][1], bboxs[i][2], bboxs[i][3]
+        outim = outim = cv2.cvtColor(outim, cv2.COLOR_RGB2BGR)
+        outim = cv2.rectangle(outim, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
+
+    outim = outim.astype(np.uint32)
+    for i in range(masks.shape[0]):
+        outim[:,:, (i+2)%3] = np.clip(outim[:,:, (i+2)%3] + masks[i].cpu().numpy() * 100, 0, 255)
+    outim = outim.astype(np.uint8)
+    return outim
+
+
 if __name__ == '__main__':
     # file path and make a list
     imgs_path = './data/hw3_mycocodata_img_comp_zlib.h5'
@@ -185,9 +204,12 @@ if __name__ == '__main__':
 
         # plot the origin img
         for i in range(batch_size):
-            # TODO: plot images with annotations
-            plt.savefig("./testfig/visualtrainset" + str(iter) + ".png")
-            plt.show()
+            # plot images with annotations
+            outim = visual_bbox_mask(img[i], bbox[i], mask[i])
+            cv2.imwrite("./testfig/visual_trainset_" + str(iter) + ".png", outim)
+            cv2.imshow("visualize dataset", outim)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
 
         if iter == 10:
             break
