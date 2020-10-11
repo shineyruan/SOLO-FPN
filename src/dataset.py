@@ -140,7 +140,7 @@ class BuildDataLoader(torch.utils.data.DataLoader):
         # Visualize debugging
 
 
-def visual_bbox_mask(image, masks, bboxs=None):
+def visual_bbox_mask(image, masks=None, bboxs=None):
     # image: tensor, 3 * h * w
     outim = np.copy(image.numpy().transpose(1, 2, 0))
     outim = (outim * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255
@@ -152,9 +152,10 @@ def visual_bbox_mask(image, masks, bboxs=None):
             outim = cv2.rectangle(outim, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
 
     outim = outim.astype(np.uint32)
-    for i in range(masks.shape[0]):
-        outim[:, :, (i + 2) % 3] = \
-            np.clip(outim[:, :, (i + 2) % 3] + masks[i].cpu().numpy() * 100, 0, 255)
+    if masks is not None:
+        for i in range(masks.shape[0]):
+            outim[:, :, (i + 2) % 3] = \
+                np.clip(outim[:, :, (i + 2) % 3] + masks[i].cpu().numpy() * 100, 0, 255)
     outim = outim.astype(np.uint8)
     return outim
 
