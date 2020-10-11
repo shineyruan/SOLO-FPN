@@ -77,8 +77,9 @@ class BuildDataset(torch.utils.data.Dataset):
         img = F.interpolate(img, size=800)
         img = img.permute(0, 2, 1)
         img = transforms.functional.normalize(
-            img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             # these should be corresponding mean and std of input data
+            img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+
         img = F.pad(img, pad=(11, 11))
 
         mask = torch.from_numpy(mask.astype(np.uint8))
@@ -140,7 +141,7 @@ class BuildDataLoader(torch.utils.data.DataLoader):
 
 
 def visual_bbox_mask(image, bboxs, masks):
-    # image: tensor, 3 * h * w 
+    # image: tensor, 3 * h * w
     outim = np.copy(image.numpy().transpose(1, 2, 0))
     outim = (outim * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255
     outim = outim.astype(np.uint8)
@@ -151,7 +152,8 @@ def visual_bbox_mask(image, bboxs, masks):
 
     outim = outim.astype(np.uint32)
     for i in range(masks.shape[0]):
-        outim[:,:, (i+2)%3] = np.clip(outim[:,:, (i+2)%3] + masks[i].cpu().numpy() * 100, 0, 255)
+        outim[:, :, (i + 2) % 3] = \
+            np.clip(outim[:, :, (i + 2) % 3] + masks[i].cpu().numpy() * 100, 0, 255)
     outim = outim.astype(np.uint8)
     return outim
 
