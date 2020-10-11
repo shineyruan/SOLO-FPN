@@ -140,15 +140,16 @@ class BuildDataLoader(torch.utils.data.DataLoader):
         # Visualize debugging
 
 
-def visual_bbox_mask(image, bboxs, masks):
+def visual_bbox_mask(image, masks, bboxs=None):
     # image: tensor, 3 * h * w
     outim = np.copy(image.numpy().transpose(1, 2, 0))
     outim = (outim * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255
     outim = outim.astype(np.uint8)
-    for i in range(bboxs.shape[0]):
-        x1, y1, x2, y2 = bboxs[i][0], bboxs[i][1], bboxs[i][2], bboxs[i][3]
-        outim = outim = cv2.cvtColor(outim, cv2.COLOR_RGB2BGR)
-        outim = cv2.rectangle(outim, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
+    if bboxs is not None:
+        for i in range(bboxs.shape[0]):
+            x1, y1, x2, y2 = bboxs[i][0], bboxs[i][1], bboxs[i][2], bboxs[i][3]
+            outim = outim = cv2.cvtColor(outim, cv2.COLOR_RGB2BGR)
+            outim = cv2.rectangle(outim, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
 
     outim = outim.astype(np.uint32)
     for i in range(masks.shape[0]):
@@ -207,7 +208,7 @@ if __name__ == '__main__':
         # plot the origin img
         for i in range(batch_size):
             # plot images with annotations
-            outim = visual_bbox_mask(img[i], bbox[i], mask[i])
+            outim = visual_bbox_mask(img[i], mask[i], bbox[i])
             cv2.imwrite("./testfig/visual_trainset_" + str(iter) + ".png", outim)
             cv2.imshow("visualize dataset", outim)
             cv2.waitKey(0)
