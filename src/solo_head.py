@@ -339,7 +339,7 @@ class SOLOHead(nn.Module):
         # remember, you want to construct target of the same resolution as prediction output
         #   in training
 
-        ins_gts_list, ins_ind_gts_list, cate_gts_list = self.MultiApply(self.forward_single_level,
+        ins_gts_list, ins_ind_gts_list, cate_gts_list = self.MultiApply(self.target_single_img,
                                                                         bbox_list,
                                                                         label_list,
                                                                         mask_list,
@@ -351,6 +351,7 @@ class SOLOHead(nn.Module):
         assert cate_gts_list[0][1].shape == (self.seg_num_grids[1], self.seg_num_grids[1])
 
         return ins_gts_list, ins_ind_gts_list, cate_gts_list
+
     # -----------------------------------
     # process single image in one batch
     # -----------------------------------
@@ -363,7 +364,6 @@ class SOLOHead(nn.Module):
         # ins_label_list: list, len: len(FPN), (S^2, 2H_feat, 2W_feat)
         # cate_label_list: list, len: len(FPN), (S, S)
         # ins_ind_label_list: list, len: len(FPN), (S^2, )
-
     def target_single_img(self,
                           gt_bboxes_raw,
                           gt_labels_raw,
