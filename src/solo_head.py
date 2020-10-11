@@ -339,11 +339,14 @@ class SOLOHead(nn.Module):
         # remember, you want to construct target of the same resolution as prediction output
         #   in training
 
-        ins_gts_list, ins_ind_gts_list, cate_gts_list = self.MultiApply(self.target_single_img,
-                                                                        bbox_list,
-                                                                        label_list,
-                                                                        mask_list,
-                                                                        featmap_sizes=ins_pred_list)
+        featmap_size_list = [ins_pred_list[i].size() for i in range(len(ins_pred_list))]
+
+        ins_gts_list, ins_ind_gts_list, cate_gts_list = \
+            self.MultiApply(self.target_single_img,
+                            bbox_list,
+                            label_list,
+                            mask_list,
+                            featmap_sizes=featmap_size_list)
 
         # check flag
         assert ins_gts_list[0][1].shape == (self.seg_num_grids[1]**2, 200, 272)
@@ -371,6 +374,7 @@ class SOLOHead(nn.Module):
                           featmap_sizes=None):
         # TODO: finish single image target build
         # compute the area of every object in this single image
+        print(featmap_sizes)
 
         # initial the output list, each entry for one featmap
         ins_label_list = []
