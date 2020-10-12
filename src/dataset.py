@@ -141,8 +141,12 @@ class BuildDataLoader(torch.utils.data.DataLoader):
 
 
 def visual_bbox_mask(image, masks=None, bboxs=None):
-    # image: tensor, 3 * h * w
-    outim = np.copy(image.numpy().transpose(1, 2, 0))
+    """
+    Input:
+        image: tensor, 3 * h * w
+        masks: tensor, num_obj * h * w
+    """
+    outim = np.copy(image.cpu().numpy().transpose(1, 2, 0))
     outim = (outim * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255
     outim = outim.astype(np.uint8)
     if bboxs is not None:
