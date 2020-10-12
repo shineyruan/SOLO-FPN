@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from scipy import ndimage
-from dataset import BuildDataLoader, BuildDataset
+from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask, cv2
 from functools import partial
 
 
@@ -414,7 +414,11 @@ class SOLOHead(nn.Module):
             # iterate over each object in the level
             for object_idx in group:
                 # find their center point and center region
-                c_y, c_x = ndimage.center_of_mass(gt_masks_raw[object_idx].numpy())
+                mask_rescaled = gt_masks_raw[object_idx].unsqueeze(0).unsqueeze(1)
+                mask_rescaled = F.interpolate(mask_rescaled, torch.Size([H_feat, W_feat]))
+                mask_rescaled = torch.squeeze(mask_rescaled)
+
+                c_y, c_x = ndimage.center_of_mass(mask_rescaled.numpy())
                 w = 0.2 * bbox_w[object_idx]
                 h = 0.2 * bbox_h[object_idx]
 
@@ -440,8 +444,7 @@ class SOLOHead(nn.Module):
                 # Assign the ins_label
                 for idx in range(top_idx, bottom_idx + 1):
                     ins_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = \
-                        nn.functional.interpolate(gt_masks_raw[object_idx],
-                                                  torch.Size([H_feat, W_feat]))
+                        mask_rescaled
 
                 # Activate the ins_ind_label
                 for idx in range(top_idx, bottom_idx + 1):
@@ -520,9 +523,35 @@ class SOLOHead(nn.Module):
                cate_gts_list,
                color_list,
                img):
-        # TODO: target image recover, for each image, recover their segmentation in 5 FPN levels.
+        # target image recover, for each image, recover their segmentation in 5 FPN levels.
         # This is an important visual check flag.
-        pass
+        bz, _, ori_h, ori_w = img.size()
+        for batch_id in range(bz):
+            for fpn_id in range(len(ins_gts_list[batch_id])):
+                # retrive num_grid in this level of FPN
+                num_grid = cate_gts_list[batch_id][fpn_id].size()[0]
+                # get activated category grid cell coordinates
+                activated_grid_idx_list = cate_gts_list[batch_id][fpn_id].nonzero(as_tuple=False)
+                # iterate through each grid cell coordinates
+                current_class = 0
+                for grid_idx in activated_grid_idx_list:
+                    image = img[batch_id].cpu()
+
+                    if cate_gts_list[batch_id][fpn_id][grid_idx[0], grid_idx[1]] != current_class:
+                        current_class = cate_gts_list[batch_id][fpn_id][grid_idx[0], grid_idx[1]]
+                        mask = ins_gts_list[batch_id][fpn_id][grid_idx[0] * num_grid + grid_idx[1]]
+                        mask = F.interpolate(mask.unsqueeze(0).unsqueeze(1),
+                                             torch.Size([ori_h, ori_w]))
+                        cv2.imshow("visualize mask", torch.squeeze(mask.cpu()).numpy())
+                        cv2.waitKey(0)
+                        cv2.destroyAllWindows()
+                        outim = visual_bbox_mask(image, torch.squeeze(mask.cpu(), 0))
+                    else:
+                        outim = visual_bbox_mask(image)
+
+                    cv2.imshow("visualize target", outim)
+                    cv2.waitKey(0)
+                    cv2.destroyAllWindows()
 
     # This function plot the inference segmentation in img
     # Input:
