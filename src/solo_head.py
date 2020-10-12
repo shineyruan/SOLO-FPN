@@ -522,7 +522,8 @@ class SOLOHead(nn.Module):
                ins_ind_gts_list,
                cate_gts_list,
                color_list,
-               img):
+               img,
+               iter=None):
         # target image recover, for each image, recover their segmentation in 5 FPN levels.
         # This is an important visual check flag.
         bz, _, ori_h, ori_w = img.size()
@@ -533,25 +534,28 @@ class SOLOHead(nn.Module):
                 # get activated category grid cell coordinates
                 activated_grid_idx_list = cate_gts_list[batch_id][fpn_id].nonzero(as_tuple=False)
                 # iterate through each grid cell coordinates
-                current_class = 0
+                classes = [0]
+                masks = []
                 for grid_idx in activated_grid_idx_list:
-                    image = img[batch_id].cpu()
-
-                    if cate_gts_list[batch_id][fpn_id][grid_idx[0], grid_idx[1]] != current_class:
-                        current_class = cate_gts_list[batch_id][fpn_id][grid_idx[0], grid_idx[1]]
+                    if cate_gts_list[batch_id][fpn_id][grid_idx[0], grid_idx[1]] not in classes:
+                        classes = cate_gts_list[batch_id][fpn_id][grid_idx[0], grid_idx[1]]
                         mask = ins_gts_list[batch_id][fpn_id][grid_idx[0] * num_grid + grid_idx[1]]
-                        mask = F.interpolate(mask.unsqueeze(0).unsqueeze(1),
-                                             torch.Size([ori_h, ori_w]))
-                        cv2.imshow("visualize mask", torch.squeeze(mask.cpu()).numpy())
-                        cv2.waitKey(0)
-                        cv2.destroyAllWindows()
-                        outim = visual_bbox_mask(image, torch.squeeze(mask.cpu(), 0))
-                    else:
-                        outim = visual_bbox_mask(image)
+                        mask = torch.squeeze(F.interpolate(mask.unsqueeze(0).unsqueeze(1),
+                                                           torch.Size([ori_h, ori_w])))
+                        masks.append(mask)
 
-                    cv2.imshow("visualize target", outim)
-                    cv2.waitKey(0)
-                    cv2.destroyAllWindows()
+                if masks:
+                    masks = torch.stack(masks)
+                    outim = visual_bbox_mask(img[batch_id], masks)
+                else:
+                    outim = visual_bbox_mask(img[batch_id])
+
+                cv2.imwrite("./testfig/visual_plotGT_"
+                            + str(iter) + "_" + str(batch_id) + "_" + str(fpn_id)
+                            + ".png", outim)
+                cv2.imshow("visualize target", outim)
+                cv2.waitKey(0)
+                cv2.destroyAllWindows()
 
     # This function plot the inference segmentation in img
     # Input:
@@ -608,13 +612,14 @@ if __name__ == '__main__':
 
     # detect device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    torch.cuda.empty_cache()
 
     resnet50_fpn = Resnet50Backbone().to(device)
     # class number is 4, because consider the background as one category.
     solo_head = SOLOHead(num_classes=4).to("cpu")
     # loop the image
     for iter, data in enumerate(train_loader, 0):
-        print("Iteration: %d", iter)
+        print("Iteration: %d" % iter)
         img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
         img = img.to(device)
 
@@ -635,4 +640,4 @@ if __name__ == '__main__':
                                                                          mask_list)
         mask_color_list = ["jet", "ocean", "Spectral"]
         solo_head.PlotGT(ins_gts_list, ins_ind_gts_list,
-                         cate_gts_list, mask_color_list, img)
+                         cate_gts_list, mask_color_list, img, iter=iter)
