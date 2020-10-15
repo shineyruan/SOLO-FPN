@@ -461,48 +461,63 @@ class SOLOHead(nn.Module):
         assert cate_label_list[1].shape == (36, 36)
         return ins_label_list, ins_ind_label_list, cate_label_list
 
-    # This function receive pred list from forward and post-process
-    # Input:
-        # ins_pred_list: list, len(fpn), (bz,S^2,Ori_H/4, Ori_W/4)
-        # cate_pred_list: list, len(fpn), (bz,S,S,C-1)
-        # ori_size: [ori_H, ori_W]
-    # Output:
-        # NMS_sorted_scores_list, list, len(bz), (keep_instance,)
-        # NMS_sorted_cate_label_list, list, len(bz), (keep_instance,)
-        # NMS_sorted_ins_list, list, len(bz), (keep_instance, ori_H, ori_W)
-
     def PostProcess(self,
                     ins_pred_list,
                     cate_pred_list,
                     ori_size):
+        """
+        This function receive pred list from forward and post-process
+
+        Input:
+        -----
+            ins_pred_list: list, len(fpn), (bz,S^2,Ori_H/4, Ori_W/4)
+            cate_pred_list: list, len(fpn), (bz,S,S,C-1)
+            ori_size: [ori_H, ori_W]
+
+        Output:
+        -----
+            NMS_sorted_scores_list, list, len(bz), (keep_instance,)
+            NMS_sorted_cate_label_list, list, len(bz), (keep_instance,)
+            NMS_sorted_ins_list, list, len(bz), (keep_instance, ori_H, ori_W)
+        """
 
         # TODO: finish PostProcess
         pass
-
-    # This function Postprocess on single img
-    # Input:
-        # ins_pred_img: (all_level_S^2, ori_H/4, ori_W/4)
-        # cate_pred_img: (all_level_S^2, C-1)
-    # Output:
-        # NMS_sorted_scores_list, list, len(bz), (keep_instance,)
-        # NMS_sorted_cate_label_list, list, len(bz), (keep_instance,)
-        # NMS_sorted_ins_list, list, len(bz), (keep_instance, ori_H, ori_W)
 
     def PostProcessImg(self,
                        ins_pred_img,
                        cate_pred_img,
                        ori_size):
+        """
+        This function Postprocess on single img
+
+        Input:
+        -----
+            ins_pred_img: (all_level_S^2, ori_H/4, ori_W/4)
+            cate_pred_img: (all_level_S^2, C-1)
+
+        Output:
+        -----
+            NMS_sorted_scores_list, list, len(bz), (keep_instance,)
+            NMS_sorted_cate_label_list, list, len(bz), (keep_instance,)
+            NMS_sorted_ins_list, list, len(bz), (keep_instance, ori_H, ori_W)
+        """
 
         # TODO: PostProcess on single image.
         pass
 
-    # This function perform matrix NMS
-    # Input:
-        # sorted_ins: (n_act, ori_H/4, ori_W/4)
-        # sorted_scores: (n_act,)
-    # Output:
-        # decay_scores: (n_act,)
     def MatrixNMS(self, sorted_ins, sorted_scores, method='gauss', gauss_sigma=0.5):
+        """
+        This function perform matrix NMS
+
+        Input:
+        -----
+            sorted_ins: (n_act, ori_H/4, ori_W/4)
+            sorted_scores: (n_act,)
+        Output:
+        -----
+            decay_scores: (n_act,)
+        """
         # TODO: finish MatrixNMS
         pass
 
