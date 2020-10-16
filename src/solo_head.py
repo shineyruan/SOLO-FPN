@@ -164,6 +164,7 @@ class SOLOHead(nn.Module):
                                                         upsample_shape=quart_shape,
                                                         ori_size=ori_size)
 
+        del quart_shape
         assert len(new_fpn_list) == len(self.seg_num_grids)
 
         # assert cate_pred_list[1].shape[1] == self.cate_out_channels
@@ -235,8 +236,11 @@ class SOLOHead(nn.Module):
                              ori_size=None):
         # upsample_shape is used in eval mode
         # Notice, we distinguish the training and inference.
+        _, _, fpn_H_feat, fpn_W_feat = fpn_feat.shape
         cate_pred = fpn_feat
         ins_pred = fpn_feat
+        del fpn_feat
+
         num_grid = self.seg_num_grids[idx]  # current level grid
 
         # Forward category head
@@ -270,7 +274,7 @@ class SOLOHead(nn.Module):
         if not eval:
             assert cate_pred.shape[1:] == (3, num_grid, num_grid)
             assert ins_pred.shape[1:] == (
-                num_grid**2, fpn_feat.shape[2] * 2, fpn_feat.shape[3] * 2)
+                num_grid**2, fpn_H_feat * 2, fpn_W_feat * 2)
         else:
             pass
         return cate_pred, ins_pred
@@ -352,12 +356,16 @@ class SOLOHead(nn.Module):
 
         featmap_size_list = [ins_pred_list[i].size() for i in range(len(ins_pred_list))]
 
+        del ins_pred_list
+
         ins_gts_list, ins_ind_gts_list, cate_gts_list = \
             self.MultiApply(self.target_single_img,
                             bbox_list,
                             label_list,
                             mask_list,
                             featmap_sizes=featmap_size_list)
+
+        del featmap_size_list, bbox_list, label_list, mask_list
 
         # check flag
         assert ins_gts_list[0][1].shape == (self.seg_num_grids[1]**2, 200, 272)
@@ -394,6 +402,8 @@ class SOLOHead(nn.Module):
         bbox_h = gt_bboxes_raw[:, 3] - gt_bboxes_raw[:, 1]
         scales = torch.sqrt(bbox_w * bbox_h)
 
+        del gt_bboxes_raw
+
         # group objects in the same level together
         fpn_objects = [[] for _ in range(len(featmap_sizes))]
         for i, scale in enumerate(scales):
@@ -407,6 +417,8 @@ class SOLOHead(nn.Module):
                 fpn_objects[3].append(i)
             if scale >= 384:
                 fpn_objects[4].append(i)
+
+        del scale
 
         #  in each level, for all belonging objects, construct true labels
         for i, group in enumerate(fpn_objects):
@@ -453,6 +465,8 @@ class SOLOHead(nn.Module):
                     ins_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = \
                         mask_rescaled
 
+                del mask_rescaled
+
                 # Activate the ins_ind_label
                 for idx in range(top_idx, bottom_idx + 1):
                     ins_ind_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = 1
@@ -461,6 +475,10 @@ class SOLOHead(nn.Module):
             ins_label_list.append(ins_label)
             ins_ind_label_list.append(ins_ind_label)
             cate_label_list.append(cate_label)
+
+            del ins_label, ins_ind_label, cate_label
+
+        del group, gt_masks_raw, gt_labels_raw
 
         # check flag
         assert ins_label_list[1].shape == (1296, 200, 272)
@@ -512,8 +530,12 @@ class SOLOHead(nn.Module):
             cate_pred_img = torch.cat([cate_pred_img, cate_pred_list[i_fpn]], dim=1)
             ins_pred_img = torch.cat([ins_pred_img, ins_pred_list[i_fpn]], dim=1)
 
+        del ins_pred_list, cate_pred_list
+
         ins_pred_img_list = [ins for ins in ins_pred_img]
         cate_pred_img_list = [cate for cate in cate_pred_img]
+
+        del cate_pred_img, ins_pred_img
 
         NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list = \
             self.MultiApply(self.PostProcessImg,
@@ -562,21 +584,31 @@ class SOLOHead(nn.Module):
                 scores[i] = c_max * torch.sum(ins_pred_img[i] * (ins_pred_img[i] > ins_thresh)) / \
                     torch.sum(ins_pred_img[i] > ins_thresh).item()
 
+        del cate_max, cate_max_idx
+
         # sort the masks according to their scores
         scores_sorted, scores_sorted_idx = torch.sort(scores, descending=True)
         idx_nonzero = torch.nonzero(scores, as_tuple=False).size()[0]
         ins_sorted_pred_img = ins_pred_img[scores_sorted_idx]
         cate_sorted_pred_img = cate_pred_img[scores_sorted_idx]
 
+        del scores, scores_sorted_idx
+        del ins_pred_img, cate_pred_img
+
         # apply matrix NMS to get NMS scores
         matrix_NMS_scores = self.MatrixNMS(ins_sorted_pred_img[:idx_nonzero],
                                            scores_sorted[:idx_nonzero],
                                            ins_thresh=ins_thresh)
 
+        del scores_sorted
+
         # only keep the masks with the k highest NMS scores
         nms_sorted_scores, nms_sorted_idx = torch.sort(matrix_NMS_scores, descending=True)
         nms_sorted_cate_label = cate_sorted_pred_img[nms_sorted_idx][:5]
         nms_sorted_ins = ins_sorted_pred_img[nms_sorted_idx][:5]
+
+        del ins_sorted_pred_img, cate_sorted_pred_img, matrix_NMS_scores
+        del nms_sorted_idx
 
         # resize the images back to (H, W)
         nms_sorted_ins = F.interpolate(nms_sorted_ins.unsqueeze(0), ori_size)
@@ -613,6 +645,8 @@ class SOLOHead(nn.Module):
         # only keeps the upper right triangle, and eliminates the main diagonal
         #   (IOU(i, i) = 0)
         ious = (intersection / union).triu(diagonal=1)
+
+        del sorted_ins
 
         # IOU(*, i) for (n_act, n_act)
         #   take i as row and k as column
@@ -706,6 +740,7 @@ class SOLOHead(nn.Module):
 
 
 from backbone import Resnet50Backbone
+from tqdm import tqdm
 if __name__ == '__main__':
     # file path and make a list
     imgs_path = './data/hw3_mycocodata_img_comp_zlib.h5'
@@ -740,6 +775,8 @@ if __name__ == '__main__':
         test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
     test_loader = test_build_loader.loader()
 
+    del train_dataset, test_dataset
+
     # detect device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.cuda.empty_cache()
@@ -748,16 +785,13 @@ if __name__ == '__main__':
     # class number is 4, because consider the background as one category.
     solo_head = SOLOHead(num_classes=4).to("cpu")
     # loop the image
-    for iter, data in enumerate(train_loader, 0):
-        print("Iteration: %d" % iter)
+    for iter, data in tqdm(enumerate(train_loader, 0)):
         img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
         img = img.to(device)
 
         # fpn is a dict
         backout = resnet50_fpn(img)
-        fpn_feat_list = []
-        for val in list(backout.values()):
-            fpn_feat_list.append(val.cpu())
+        fpn_feat_list = [val.cpu() for val in list(backout.values())]
         # make the target
 
         # demo
@@ -766,10 +800,14 @@ if __name__ == '__main__':
                                                           eval=True,
                                                           ori_size=img.size()[-2:])
         solo_head.PostProcess(ins_pred_list, cate_pred_list, ori_size=img.size()[-2:])
-        ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
-                                                                         bbox_list,
-                                                                         label_list,
-                                                                         mask_list)
-        mask_color_list = ["jet", "ocean", "Spectral"]
-        solo_head.PlotGT(ins_gts_list, ins_ind_gts_list,
-                         cate_gts_list, mask_color_list, img, iter=iter)
+
+        del img, label_list, mask_list, bbox_list
+        del backout, fpn_feat_list, cate_pred_list, ins_pred_list
+
+        # ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
+        #                                                                  bbox_list,
+        #                                                                  label_list,
+        #                                                                  mask_list)
+        # mask_color_list = ["jet", "ocean", "Spectral"]
+        # solo_head.PlotGT(ins_gts_list, ins_ind_gts_list,
+        #                  cate_gts_list, mask_color_list, img, iter=iter)
