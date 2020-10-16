@@ -308,8 +308,9 @@ class SOLOHead(nn.Module):
     # Output: dice_loss, scalar
 
     def DiceLoss(self, mask_pred, mask_gt):
-        numerator = np.sum(2 * mask_gt * mask_pred)
-        denominator = np.sum(mask_gt ** 2 + mask_pred ** 2)
+        # Inputs are torch ndarrays
+        numerator = torch.sum(2 * mask_gt * mask_pred)
+        denominator = torch.sum(mask_gt ** 2 + mask_pred ** 2)
         return 1 - numerator / denominator
 
 
@@ -319,10 +320,10 @@ class SOLOHead(nn.Module):
         # cate_gts: (num_entry,)
     # Output: focal_loss, scalar
     def FocalLoss(self, cate_preds, cate_gts):
-        # Inputs are numpy ndarrays
+        # Inputs are torch ndarrays
         n, c = cate_preds.shape
-        cate_gts_onehot = np.zeros((n, c+1), dtype=int)
-        cate_gts_onehot[np.arange(n), cate_gt] = 1
+        cate_gts_onehot = torch.zeros((n, c+1), dtype=int)
+        cate_gts_onehot[torch.arange(n), cate_gt] = 1
         cate_gts_onehot = cate_gts_onehot[:, 1:].flatten()
         p = cate_preds.flatten()
 
@@ -332,8 +333,8 @@ class SOLOHead(nn.Module):
         pt = abs(1 - cate_gts_onehot - p)
 
         gamma = 2 # hyper-parameter
-        fl = -alphat * (1 - pt) ** gamma * np.log(pt)
-        return np.sum(fl)
+        fl = -alphat * (1 - pt) ** gamma * torch.log(pt)
+        return torch.sum(fl)
 
 
     def MultiApply(self, func, *args, **kwargs):
