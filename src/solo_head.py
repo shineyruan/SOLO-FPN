@@ -308,8 +308,10 @@ class SOLOHead(nn.Module):
     # Output: dice_loss, scalar
 
     def DiceLoss(self, mask_pred, mask_gt):
-        # TODO: compute DiceLoss
-        pass
+        numerator = np.sum(2 * mask_gt * mask_pred)
+        denominator = np.sum(mask_gt ** 2 + mask_pred ** 2)
+        return 1 - numerator / denominator
+
 
     # This function compute the cate loss
     # Input:
@@ -317,8 +319,22 @@ class SOLOHead(nn.Module):
         # cate_gts: (num_entry,)
     # Output: focal_loss, scalar
     def FocalLoss(self, cate_preds, cate_gts):
-        # TODO: compute focalloss
-        pass
+        # Inputs are numpy ndarrays
+        n, c = cate_preds.shape
+        cate_gts_onehot = np.zeros((n, c+1), dtype=int)
+        cate_gts_onehot[np.arange(n), cate_gt] = 1
+        cate_gts_onehot = cate_gts_onehot[:, 1:].flatten()
+        p = cate_preds.flatten()
+
+        alpha = 0.25
+        alphat = abs(1 - cate_gts_onehot - alpha)
+
+        pt = abs(1 - cate_gts_onehot - p)
+
+        gamma = 2 # hyper-parameter
+        fl = -alphat * (1 - pt) ** gamma * np.log(pt)
+        return np.sum(fl)
+
 
     def MultiApply(self, func, *args, **kwargs):
         pfunc = partial(func, **kwargs) if kwargs else func
