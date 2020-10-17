@@ -327,8 +327,8 @@ class SOLOHead(nn.Module):
         L_mask = 0.0
         for fpn in range(len(ins_gts)):
             for i in range(ins_gts[0].shape[0]):
-                L_mask += DiceLoss(ins_preds[fpn][i], ins_gts[fpn][i])
-        L_mask /= (len(ins_gts) * ins_gts[0].shape[0])
+                L_mask += self.DiceLoss(ins_preds[fpn][i], ins_gts[fpn][i])
+        L_mask /= (len(ins_gts) * ins_gts[0].shape[0] + 1)
 
         # uniform the expression for cate_gts & cate_preds
         # cate_gts: (bz*fpn*S^2,), img, fpn, grids
@@ -341,7 +341,7 @@ class SOLOHead(nn.Module):
                       for cate_pred_level in cate_pred_list]
         cate_preds = torch.cat(cate_preds, 0)
 
-        L_cate = FocalLoss(cate_preds, cate_gts) / cate_gts.shape[0]  # normalize?
+        L_cate = self.FocalLoss(cate_preds, cate_gts) / cate_gts.shape[0]  # normalize?
 
         mask_lambda = 3
         return L_cate + mask_lambda * L_mask
