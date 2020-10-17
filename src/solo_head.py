@@ -328,6 +328,7 @@ class SOLOHead(nn.Module):
         for fpn in range(len(ins_gts)):
             for i in range(ins_gts[0].shape[0]):
                 L_mask += self.DiceLoss(ins_preds[fpn][i], ins_gts[fpn][i])
+        # FIXME: investigate why len(ins_gts) * ins_gts[0].shape[0] == 0
         L_mask /= (len(ins_gts) * ins_gts[0].shape[0] + 1)
 
         # uniform the expression for cate_gts & cate_preds
@@ -375,7 +376,7 @@ class SOLOHead(nn.Module):
         alpha = 0.25
         alphat = abs(1 - cate_gts_onehot - alpha)
 
-        pt = abs(1 - cate_gts_onehot - p)
+        pt = abs(1 - cate_gts_onehot - p) + 1e-10
 
         gamma = 2  # hyper-parameter
         fl = -alphat * (1 - pt) ** gamma * torch.log(pt)
