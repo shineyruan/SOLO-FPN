@@ -296,34 +296,68 @@ class SOLOHead(nn.Module):
              ins_gts_list,
              ins_ind_gts_list,
              cate_gts_list):
-        # TODO: compute loss, vectorize this part will help a lot. To avoid potential
-        #   ill-conditioning, if necessary, add a very small number to denominator for
-        #   focalloss and diceloss computation.
-        pass
+        # compute loss, vectorize this part will help a lot. To avoid potential
+        # ill-conditioning, if necessary, add a very small number to denominator for
+        # focalloss and diceloss computation.
 
+        # uniform the expression for ins_gts & ins_preds
+        # ins_gts: list, len(fpn), (active_across_batch, 2H_feat, 2W_feat)
+        # ins_preds: list, len(fpn), (active_across_batch, 2H_feat, 2W_feat)
+        ins_gts = [torch.cat([ins_labels_level_img[ins_ind_labels_level_img, ...]
+                              for ins_labels_level_img, ins_ind_labels_level_img
+                              in zip(ins_labels_level, ins_ind_labels_level)], 0)
+                   for ins_labels_level, ins_ind_labels_level
+                   in zip(zip(*ins_gts_list), zip(*ins_ind_gts_list))]
+        ins_preds = [torch.cat([ins_preds_level_img[ins_ind_labels_level_img, ...]
+                                for ins_preds_level_img, ins_ind_labels_level_img
+                                in zip(ins_preds_level, ins_ind_labels_level)], 0)
+                     for ins_preds_level, ins_ind_labels_level
+                     in zip(ins_pred_list, zip(*ins_ind_gts_list))]
+        L_mask = 0.0
+        for fpn in range(len(ins_gts)):
+            for i in range(ins_gts[0].shape[0]):
+                L_mask += DiceLoss(ins_preds[fpn][i], ins_gts[fpn][i])
+        L_mask /= (len(ins_gts) * ins_gts[0].shape[0])
+
+        # uniform the expression for cate_gts & cate_preds
+        # cate_gts: (bz*fpn*S^2,), img, fpn, grids
+        # cate_preds: (bz*fpn*S^2, C-1), ([img, fpn, grids], C-1)
+        cate_gts = [torch.cat([cate_gts_level_img.flatten()
+                               for cate_gts_level_img in cate_gts_level])
+                    for cate_gts_level in zip(*cate_gts_list)]
+        cate_gts = torch.cat(cate_gts)
+        cate_preds = [cate_pred_level.permute(0, 2, 3, 1).reshape(-1, self.cate_out_channels)
+                      for cate_pred_level in cate_pred_list]
+        cate_preds = torch.cat(cate_preds, 0)
+
+        L_cate = FocalLoss(cate_preds, cate_gts) / cate_gts.shape[0]  # normalize?
+
+        mask_lambda = 3
+        return L_cate + mask_lambda * L_mask
 
     # This function compute the DiceLoss
     # Input:
         # mask_pred: (2H_feat, 2W_feat)
         # mask_gt: (2H_feat, 2W_feat)
     # Output: dice_loss, scalar
+
     def DiceLoss(self, mask_pred, mask_gt):
         # Inputs are torch ndarrays
         numerator = torch.sum(2 * mask_gt * mask_pred)
         denominator = torch.sum(mask_gt ** 2 + mask_pred ** 2) + 1e-10
         return 1 - numerator / denominator
 
-
     # This function compute the cate loss
     # Input:
         # cate_preds: (num_entry, C-1)
         # cate_gts: (num_entry,)
     # Output: focal_loss, scalar
+
     def FocalLoss(self, cate_preds, cate_gts):
         # Inputs are torch ndarrays
         n, c = cate_preds.shape
-        cate_gts_onehot = torch.zeros((n, c+1), dtype=int)
-        cate_gts_onehot[torch.arange(n), cate_gt] = 1
+        cate_gts_onehot = torch.zeros((n, c + 1), dtype=int)
+        cate_gts_onehot[torch.arange(n), cate_gts] = 1
         cate_gts_onehot = cate_gts_onehot[:, 1:].flatten()
         p = cate_preds.flatten()
 
@@ -332,10 +366,9 @@ class SOLOHead(nn.Module):
 
         pt = abs(1 - cate_gts_onehot - p)
 
-        gamma = 2 # hyper-parameter
+        gamma = 2  # hyper-parameter
         fl = -alphat * (1 - pt) ** gamma * torch.log(pt)
         return torch.sum(fl)
-
 
     def MultiApply(self, func, *args, **kwargs):
         pfunc = partial(func, **kwargs) if kwargs else func
