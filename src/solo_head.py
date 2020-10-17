@@ -249,7 +249,7 @@ class SOLOHead(nn.Module):
         cate_pred = self.sigmoid(self.cate_out(cate_pred))
         # resize category branch output to SxS
         cate_pred = nn.functional.interpolate(cate_pred, torch.Size([num_grid, num_grid]),
-                                              mode='bilinear')
+                                              mode='bilinear', align_corners=False)
 
         # Forward mask head
         # append normalized x, y coordinates to current input
@@ -261,13 +261,15 @@ class SOLOHead(nn.Module):
 
         # upsampling to 2*H_feat, 2*W_feat
         _, _, H_feat, W_feat = ins_pred.size()
-        ins_pred = nn.functional.interpolate(ins_pred, torch.Size([2 * H_feat, 2 * W_feat]))
+        ins_pred = nn.functional.interpolate(ins_pred, torch.Size([2 * H_feat, 2 * W_feat]),
+                                             mode='bilinear', align_corners=False)
 
         # in inference time, upsample the pred to (ori image size/4)
         if eval:
             ori_H, ori_W = ori_size
             # resize ins_pred
-            ins_pred = nn.functional.interpolate(ins_pred, torch.Size([ori_H // 4, ori_W // 4]))
+            ins_pred = nn.functional.interpolate(ins_pred, torch.Size([ori_H // 4, ori_W // 4]),
+                                                 mode='bilinear', align_corners=False)
             cate_pred = self.points_nms(cate_pred).permute(0, 2, 3, 1)
 
         # check flag
@@ -485,7 +487,8 @@ class SOLOHead(nn.Module):
             for object_idx in group:
                 # find their center point and center region
                 mask_rescaled = gt_masks_raw[object_idx].unsqueeze(0).unsqueeze(1)
-                mask_rescaled = F.interpolate(mask_rescaled, torch.Size([H_feat, W_feat]))
+                mask_rescaled = F.interpolate(mask_rescaled, torch.Size([H_feat, W_feat]),
+                                              mode='bilinear', align_corners=False)
                 mask_rescaled = torch.squeeze(mask_rescaled)
 
                 c_y, c_x = ndimage.center_of_mass(mask_rescaled.numpy())
