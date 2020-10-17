@@ -301,16 +301,16 @@ class SOLOHead(nn.Module):
         #   focalloss and diceloss computation.
         pass
 
+
     # This function compute the DiceLoss
     # Input:
         # mask_pred: (2H_feat, 2W_feat)
         # mask_gt: (2H_feat, 2W_feat)
     # Output: dice_loss, scalar
-
     def DiceLoss(self, mask_pred, mask_gt):
         # Inputs are torch ndarrays
         numerator = torch.sum(2 * mask_gt * mask_pred)
-        denominator = torch.sum(mask_gt ** 2 + mask_pred ** 2)
+        denominator = torch.sum(mask_gt ** 2 + mask_pred ** 2) + 1e-10
         return 1 - numerator / denominator
 
 
