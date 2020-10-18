@@ -3,10 +3,11 @@ import cv2
 from backbone import Resnet50Backbone
 from tqdm import tqdm
 from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask
-from solo_head import SOLOHead
+from solo_head import SOLOHead, coloredlogs, logging
 
 
 if __name__ == '__main__':
+    coloredlogs.install(level='DEBUG')
     # file path and make a list
     imgs_path = './data/hw3_mycocodata_img_comp_zlib.h5'
     masks_path = './data/hw3_mycocodata_mask_comp_zlib.h5'
@@ -55,7 +56,8 @@ if __name__ == '__main__':
     num_epochs = 36
     for epochs in range(num_epochs):
         # loop the image
-        for iter, data in tqdm(enumerate(train_loader, 0)):
+        for iter, data in enumerate(train_loader, 0):
+            logging.info("Iteration: %d", iter)
             img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
             img = img.to(resnet_device)
 
@@ -86,7 +88,7 @@ if __name__ == '__main__':
                                   ins_gts_list,
                                   ins_ind_gts_list,
                                   cate_gts_list)
-            print("loss =", loss.item())
+            logging.info("Iteration: %d, loss = %f", iter, loss.item())
             loss.backward()
             optimizer.step()
 

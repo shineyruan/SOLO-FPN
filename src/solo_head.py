@@ -6,6 +6,9 @@ from scipy import ndimage
 from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask, cv2
 from functools import partial
 
+import coloredlogs
+import logging
+
 
 class SOLOHead(nn.Module):
     def __init__(self,
@@ -486,7 +489,7 @@ class SOLOHead(nn.Module):
             # iterate over each object in the level
             for object_idx in group:
                 # find their center point and center region
-                mask_rescaled = gt_masks_raw[object_idx].unsqueeze(0).unsqueeze(1)
+                mask_rescaled = gt_masks_raw[object_idx].unsqueeze(0).unsqueeze(1).type(torch.float)
                 mask_rescaled = F.interpolate(mask_rescaled, torch.Size([H_feat, W_feat]),
                                               mode='bilinear', align_corners=False)
                 mask_rescaled = torch.squeeze(mask_rescaled)
