@@ -3,16 +3,30 @@ import cv2
 from backbone import Resnet50Backbone
 from tqdm import tqdm
 from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask
-from solo_head import SOLOHead, coloredlogs, logging
+from solo_head import SOLOHead, logging, sys, IN_COLAB
+import os
+
+if not IN_COLAB:
+    from solo_head import coloredlogs
+
+COLAB_ROOT = "/content/drive/My Drive/CIS680_2019/SOLO-FPN"
 
 
 if __name__ == '__main__':
-    coloredlogs.install(level='DEBUG')
+    if not IN_COLAB:
+        coloredlogs.install(level='DEBUG')
     # file path and make a list
-    imgs_path = './data/hw3_mycocodata_img_comp_zlib.h5'
-    masks_path = './data/hw3_mycocodata_mask_comp_zlib.h5'
-    labels_path = "./data/hw3_mycocodata_labels_comp_zlib.npy"
-    bboxes_path = "./data/hw3_mycocodata_bboxes_comp_zlib.npy"
+    imgs_path = 'data/hw3_mycocodata_img_comp_zlib.h5'
+    masks_path = 'data/hw3_mycocodata_mask_comp_zlib.h5'
+    labels_path = "data/hw3_mycocodata_labels_comp_zlib.npy"
+    bboxes_path = "data/hw3_mycocodata_bboxes_comp_zlib.npy"
+
+    if IN_COLAB:
+        imgs_path = os.path.join(COLAB_ROOT, imgs_path)
+        masks_path = os.path.join(COLAB_ROOT, masks_path)
+        labels_path = os.path.join(COLAB_ROOT, labels_path)
+        bboxes_path = os.path.join(COLAB_ROOT, bboxes_path)
+
     paths = [imgs_path, masks_path, labels_path, bboxes_path]
     # load the data into data.Dataset
     dataset = BuildDataset(paths)
@@ -39,7 +53,10 @@ if __name__ == '__main__':
     del train_dataset, test_dataset
 
     # detect device
-    resnet_device = torch.device("cpu")
+    resnet_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if not IN_COLAB:
+        # if not in Google Colab, save GPU memory for SOLO head
+        resnet_device = torch.device("cpu")
     solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.cuda.empty_cache()
 
@@ -55,9 +72,12 @@ if __name__ == '__main__':
 
     num_epochs = 36
     for epochs in range(num_epochs):
+        count = 0
+        avg_loss = 0
+
         # loop the image
-        for iter, data in tqdm(enumerate(train_loader, 0)):
-            # logging.info("Iteration: %d", iter)
+        progress_bar = tqdm(enumerate(train_loader, 0))
+        for iter, data in progress_bar:
             img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
             img = img.to(resnet_device)
 
@@ -90,11 +110,18 @@ if __name__ == '__main__':
                                   ins_ind_gts_list,
                                   cate_gts_list,
                                   solo_device)
-            logging.info("loss = %f", loss.item())
             loss.backward()
             optimizer.step()
+
+            avg_loss += loss.item()
+            count += 1
+
+            progress_bar.set_description("loss = %f" % loss.item())
 
             del img, label_list, mask_list, bbox_list
             del backout, fpn_feat_list, cate_pred_list, ins_pred_list
 
         scheduler.step()
+
+        avg_loss /= count
+        print("Epoch: {}, avg loss = {}".format(epochs, avg_loss))

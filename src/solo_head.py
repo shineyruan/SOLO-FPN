@@ -5,9 +5,13 @@ import numpy as np
 from scipy import ndimage
 from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask, cv2
 from functools import partial
-
-import coloredlogs
 import logging
+
+import sys
+IN_COLAB = 'google' in sys.modules
+
+if not IN_COLAB:
+    import coloredlogs
 
 
 class SOLOHead(nn.Module):
