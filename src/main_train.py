@@ -39,8 +39,8 @@ if __name__ == '__main__':
     del train_dataset, test_dataset
 
     # detect device
-    resnet_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    solo_device = torch.device("cpu")
+    resnet_device = torch.device("cpu")
+    solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     torch.cuda.empty_cache()
 
     resnet50_fpn = Resnet50Backbone(device=resnet_device, eval=True)
@@ -56,15 +56,17 @@ if __name__ == '__main__':
     num_epochs = 36
     for epochs in range(num_epochs):
         # loop the image
-        for iter, data in enumerate(train_loader, 0):
-            logging.info("Iteration: %d", iter)
+        for iter, data in tqdm(enumerate(train_loader, 0)):
+            # logging.info("Iteration: %d", iter)
             img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
             img = img.to(resnet_device)
 
             # fpn is a dict
             backout = resnet50_fpn(img)
-            if solo_device == torch.device("cpu"):
+            if solo_device == torch.device("cpu") and resnet_device == torch.device("cuda:0"):
                 fpn_feat_list = [val.cpu() for val in list(backout.values())]
+            elif solo_device == torch.device("cuda:0") and resnet_device == torch.device("cpu"):
+                fpn_feat_list = [val.cuda() for val in list(backout.values())]
             else:
                 fpn_feat_list = [val for val in list(backout.values())]
 
@@ -72,14 +74,13 @@ if __name__ == '__main__':
                                                               solo_device,
                                                               eval=False,
                                                               ori_size=img.size()[-2:])
-
             ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
                                                                              bbox_list,
                                                                              label_list,
                                                                              mask_list)
-            ins_ind_gts_list = [[fpn.type(torch.bool) for fpn in fpnlist]
+            ins_ind_gts_list = [[fpn.type(torch.bool).to(solo_device) for fpn in fpnlist]
                                 for fpnlist in ins_ind_gts_list]
-            cate_gts_list = [[fpn.type(torch.long) for fpn in fpnlist]
+            cate_gts_list = [[fpn.type(torch.long).to(solo_device) for fpn in fpnlist]
                              for fpnlist in ins_ind_gts_list]
 
             optimizer.zero_grad()
@@ -87,8 +88,9 @@ if __name__ == '__main__':
                                   ins_pred_list,
                                   ins_gts_list,
                                   ins_ind_gts_list,
-                                  cate_gts_list)
-            logging.info("Iteration: %d, loss = %f", iter, loss.item())
+                                  cate_gts_list,
+                                  solo_device)
+            logging.info("loss = %f", loss.item())
             loss.backward()
             optimizer.step()
 
