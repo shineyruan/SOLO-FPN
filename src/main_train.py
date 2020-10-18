@@ -60,10 +60,11 @@ if __name__ == '__main__':
 
     # detect device
     resnet_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if not IN_COLAB:
         # if not in Google Colab, save GPU memory for SOLO head
-        resnet_device = torch.device("cpu")
-    solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        solo_device = torch.device("cpu")
+
     torch.cuda.empty_cache()
 
     resnet50_fpn = Resnet50Backbone(device=resnet_device, eval=True)
@@ -77,7 +78,7 @@ if __name__ == '__main__':
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[27, 33], gamma=0.1)
 
     # whether to resume training
-    resume = True
+    resume = False
     resume_epoch = 18
     start_epoch = 0
 
@@ -87,10 +88,10 @@ if __name__ == '__main__':
         checkpoint = torch.load(path)
         solo_head.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch']
+        start_epoch = checkpoint['epoch'] + 1
 
     num_epochs = 36
-    for epochs in range(start_epoch + 1, num_epochs):
+    for epochs in range(start_epoch, num_epochs):
         count = 0
         avg_loss = 0
 
