@@ -7,6 +7,8 @@ from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask, cv2
 from functools import partial
 import logging
 
+import time
+
 import sys
 IN_COLAB = 'google' in sys.modules
 
@@ -159,6 +161,8 @@ class SOLOHead(nn.Module):
         # ins_pred_list: list, len(fpn_level), each (bz, S^2, Ori_H/4, Ori_W/4) / after upsampling
     def forward(self, fpn_feat_list, device, eval=False, ori_size=None):
         new_fpn_list = self.NewFPN(fpn_feat_list)  # stride[8,8,16,32,32]
+        del fpn_feat_list
+
         assert new_fpn_list[0].shape[1:] == (256, 100, 136)
         quart_shape = [new_fpn_list[0].shape[-2] * 2,
                        new_fpn_list[0].shape[-1] * 2]  # stride: 4
@@ -171,8 +175,8 @@ class SOLOHead(nn.Module):
                                                         upsample_shape=quart_shape,
                                                         ori_size=ori_size)
 
-        del quart_shape
         assert len(new_fpn_list) == len(self.seg_num_grids)
+        del quart_shape, new_fpn_list
 
         # assert cate_pred_list[1].shape[1] == self.cate_out_channels
         assert ins_pred_list[1].shape[1] == self.seg_num_grids[1]**2
@@ -211,15 +215,13 @@ class SOLOHead(nn.Module):
         """
         # construct normalized x,y coordinates
         feat_bz, _, feat_H, feat_W = fpn_feat.size()
-        normalized_x_feat = torch.stack([torch.Tensor(range(feat_W))
-                                         for _ in range(feat_H)]).to(device)
-        normalized_x_feat /= feat_W
-        normalized_y_feat = torch.stack([torch.Tensor([i for _ in range(feat_W)])
-                                         for i in range(feat_H)]).to(device)
-        normalized_y_feat /= feat_H
+        normalized_y_feat, normalized_x_feat = torch.meshgrid(torch.arange(feat_H),
+                                                              torch.arange(feat_W))
+        normalized_x_feat = normalized_x_feat.type(torch.float) / feat_W
+        normalized_y_feat = normalized_y_feat.type(torch.float) / feat_H
         # expand coordinates and repeats along batch & channel dimension
-        normalized_x_feat = normalized_x_feat.repeat(feat_bz, 1, 1, 1)
-        normalized_y_feat = normalized_y_feat.repeat(feat_bz, 1, 1, 1)
+        normalized_x_feat = normalized_x_feat.repeat(feat_bz, 1, 1, 1).to(device)
+        normalized_y_feat = normalized_y_feat.repeat(feat_bz, 1, 1, 1).to(device)
         # concatenate them along the channel dimension
         fpn_feat = torch.cat([fpn_feat, normalized_x_feat, normalized_y_feat], dim=1)
 
@@ -334,6 +336,10 @@ class SOLOHead(nn.Module):
                                 in zip(ins_preds_level, ins_ind_labels_level)], 0).to(device)
                      for ins_preds_level, ins_ind_labels_level
                      in zip(ins_pred_list, zip(*ins_ind_gts_list))]
+
+        del ins_pred_list, ins_gts_list, ins_ind_gts_list
+
+        # TODO: consider changing this to MultiApply()
         L_mask = 0.0
         count = 0
         for fpn in range(len(ins_gts)):
@@ -341,6 +347,8 @@ class SOLOHead(nn.Module):
                 L_mask += self.DiceLoss(ins_preds[fpn][i], ins_gts[fpn][i], device)
                 count += 1
         L_mask /= count
+
+        del ins_gts, ins_preds
 
         # uniform the expression for cate_gts & cate_preds
         # cate_gts: (bz*fpn*S^2,), img, fpn, grids
@@ -353,7 +361,11 @@ class SOLOHead(nn.Module):
                       for cate_pred_level in cate_pred_list]
         cate_preds = torch.cat(cate_preds, 0)
 
+        del cate_pred_list, cate_gts_list
+
         L_cate = self.FocalLoss(cate_preds, cate_gts, device) / cate_gts.shape[0]  # normalize?
+
+        del cate_gts, cate_preds
 
         mask_lambda = 3
         return L_cate + mask_lambda * L_mask
@@ -368,6 +380,9 @@ class SOLOHead(nn.Module):
         # Inputs are torch ndarrays
         numerator = torch.sum(2 * mask_gt * mask_pred).to(device)
         denominator = torch.sum(mask_gt ** 2 + mask_pred ** 2).to(device) + 1e-10
+
+        del mask_pred, mask_gt
+
         return 1 - numerator / denominator
 
     # This function compute the cate loss
@@ -383,6 +398,8 @@ class SOLOHead(nn.Module):
         cate_gts_onehot[torch.arange(n), cate_gts] = 1
         cate_gts_onehot = cate_gts_onehot[:, 1:].flatten()
         p = cate_preds.flatten()
+
+        del cate_preds, cate_gts
 
         alphat = abs(1 - cate_gts_onehot - self.cate_loss_cfg['alpha'])
 
@@ -488,7 +505,7 @@ class SOLOHead(nn.Module):
             # initialize outputs
             ins_label = torch.zeros(num_grid_2, H_feat, W_feat)
             cate_label = torch.zeros(num_grid, num_grid)
-            ins_ind_label = torch.zeros(num_grid_2)
+            ins_ind_label = torch.zeros(num_grid_2, dtype=torch.bool)
 
             # iterate over each object in the level
             for object_idx in group:
@@ -521,21 +538,19 @@ class SOLOHead(nn.Module):
                 cate_label[top_idx:bottom_idx + 1, left_idx:right_idx + 1] = \
                     gt_labels_raw[object_idx]
 
-                # Assign the ins_label
-                for idx in range(top_idx, bottom_idx + 1):
-                    ins_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = \
-                        mask_rescaled
-
-                del mask_rescaled
-
                 # Activate the ins_ind_label
                 for idx in range(top_idx, bottom_idx + 1):
-                    ins_ind_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = 1
+                    ins_ind_label[num_grid * idx + left_idx:num_grid * idx + right_idx + 1] = True
+
+                # Assign the ins_label
+                ins_label[ins_ind_label] = mask_rescaled
+
+                del mask_rescaled
 
             # append the output labels to list
             ins_label_list.append(ins_label)
             ins_ind_label_list.append(ins_ind_label)
-            cate_label_list.append(cate_label)
+            cate_label_list.append(cate_label.type(torch.long))
 
             del ins_label, ins_ind_label, cate_label
 
@@ -545,6 +560,9 @@ class SOLOHead(nn.Module):
         assert ins_label_list[1].shape == (1296, 200, 272)
         assert ins_ind_label_list[1].shape == (1296,)
         assert cate_label_list[1].shape == (36, 36)
+
+        # make ins_ind_label_list bool, cate_label_list long,
+        #   and transfer all of them to device
         return ins_label_list, ins_ind_label_list, cate_label_list
 
     def PostProcess(self,

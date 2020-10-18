@@ -6,6 +6,8 @@ from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask
 from solo_head import SOLOHead, logging, sys, IN_COLAB
 import os
 
+import time
+
 if not IN_COLAB:
     from solo_head import coloredlogs
 
@@ -20,12 +22,16 @@ if __name__ == '__main__':
     masks_path = 'data/hw3_mycocodata_mask_comp_zlib.h5'
     labels_path = "data/hw3_mycocodata_labels_comp_zlib.npy"
     bboxes_path = "data/hw3_mycocodata_bboxes_comp_zlib.npy"
+    checkpoints_path = "checkpoints/"
 
     if IN_COLAB:
         imgs_path = os.path.join(COLAB_ROOT, imgs_path)
         masks_path = os.path.join(COLAB_ROOT, masks_path)
         labels_path = os.path.join(COLAB_ROOT, labels_path)
         bboxes_path = os.path.join(COLAB_ROOT, bboxes_path)
+        checkpoints_path = os.path.join(COLAB_ROOT, checkpoints_path)
+
+    os.makedirs(checkpoints_path, exist_ok=True)
 
     paths = [imgs_path, masks_path, labels_path, bboxes_path]
     # load the data into data.Dataset
@@ -62,7 +68,7 @@ if __name__ == '__main__':
 
     resnet50_fpn = Resnet50Backbone(device=resnet_device, eval=True)
     # class number is 4, because consider the background as one category.
-    solo_head = SOLOHead(num_classes=4).to(solo_device)
+    solo_head = SOLOHead(num_classes=4).to(solo_device).train()
 
     learning_rate = 0.02 / batch_size
     optimizer = torch.optim.SGD(solo_head.parameters(), lr=learning_rate,
@@ -82,7 +88,12 @@ if __name__ == '__main__':
             img = img.to(resnet_device)
 
             # fpn is a dict
-            backout = resnet50_fpn(img)
+            with torch.no_grad():
+                backout = resnet50_fpn(img)
+
+            ori_size = img.size()[-2:]
+            del img
+
             if solo_device == torch.device("cpu") and resnet_device == torch.device("cuda:0"):
                 fpn_feat_list = [val.cpu() for val in list(backout.values())]
             elif solo_device == torch.device("cuda:0") and resnet_device == torch.device("cpu"):
@@ -90,18 +101,25 @@ if __name__ == '__main__':
             else:
                 fpn_feat_list = [val for val in list(backout.values())]
 
+            del backout
+
             cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
                                                               solo_device,
                                                               eval=False,
-                                                              ori_size=img.size()[-2:])
+                                                              ori_size=ori_size)
+
+            del fpn_feat_list
+
             ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
                                                                              bbox_list,
                                                                              label_list,
                                                                              mask_list)
-            ins_ind_gts_list = [[fpn.type(torch.bool).to(solo_device) for fpn in fpnlist]
-                                for fpnlist in ins_ind_gts_list]
-            cate_gts_list = [[fpn.type(torch.long).to(solo_device) for fpn in fpnlist]
-                             for fpnlist in ins_ind_gts_list]
+            del label_list, mask_list, bbox_list
+
+            ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
+                                for fpn_list in ins_ind_gts_list]
+            cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
+                             for fpn_list in cate_gts_list]
 
             optimizer.zero_grad()
             loss = solo_head.loss(cate_pred_list,
@@ -118,10 +136,17 @@ if __name__ == '__main__':
 
             progress_bar.set_description("loss = %f" % loss.item())
 
-            del img, label_list, mask_list, bbox_list
-            del backout, fpn_feat_list, cate_pred_list, ins_pred_list
+            del cate_pred_list, ins_pred_list, ins_gts_list, ins_ind_gts_list, cate_gts_list
 
         scheduler.step()
 
         avg_loss /= count
         print("Epoch: {}, avg loss = {}".format(epochs, avg_loss))
+
+        path = os.path.join(checkpoints_path, 'solo_epoch' + str(epochs))
+        torch.save({
+            'epoch': epochs,
+            'model_state_dict': solo_head.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'train_running_loss': avg_loss
+        }, path)
