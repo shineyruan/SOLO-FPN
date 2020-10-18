@@ -42,10 +42,10 @@ if __name__ == '__main__':
     full_size = len(dataset)
     train_size = int(full_size * 0.8)
     test_size = full_size - train_size
-    # random split the dataset into training and testset
-    # set seed
-    torch.random.manual_seed(1)
-    train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
+    # random split the dataset into training and testset; set seed
+    train_dataset, test_dataset = \
+        torch.utils.data.random_split(dataset, [train_size, test_size],
+                                      generator=torch.random.manual_seed(1))
     # push the randomized training data into the dataloader
 
     batch_size = 2
@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     # whether to resume training
     resume = False
-    resume_epoch = 18
+    resume_epoch = 17
     start_epoch = 0
 
     if resume:
@@ -88,6 +88,7 @@ if __name__ == '__main__':
         checkpoint = torch.load(path)
         solo_head.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
 
     num_epochs = 36
@@ -117,6 +118,7 @@ if __name__ == '__main__':
 
             del backout
 
+            optimizer.zero_grad()
             cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
                                                               solo_device,
                                                               eval=False,
@@ -135,7 +137,6 @@ if __name__ == '__main__':
             cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                              for fpn_list in cate_gts_list]
 
-            optimizer.zero_grad()
             loss = solo_head.loss(cate_pred_list,
                                   ins_pred_list,
                                   ins_gts_list,
@@ -162,5 +163,6 @@ if __name__ == '__main__':
             'epoch': epochs,
             'model_state_dict': solo_head.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
             'train_running_loss': avg_loss
         }, path)
