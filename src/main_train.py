@@ -76,8 +76,21 @@ if __name__ == '__main__':
     # set scheduler
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[27, 33], gamma=0.1)
 
+    # whether to resume training
+    resume = True
+    resume_epoch = 18
+    start_epoch = 0
+
+    if resume:
+        path = os.path.join(checkpoints_path, 'solo_epoch' + str(resume_epoch))
+        print("Loading checkpoint:", path)
+        checkpoint = torch.load(path)
+        solo_head.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch']
+
     num_epochs = 36
-    for epochs in range(num_epochs):
+    for epochs in range(start_epoch + 1, num_epochs):
         count = 0
         avg_loss = 0
 
