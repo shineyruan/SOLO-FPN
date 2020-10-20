@@ -838,6 +838,61 @@ class SOLOHead(nn.Module):
             cv2.waitKey(0)
             cv2.destroyAllWindows()
 
+    def solo_evaluation(self,
+                        NMS_sorted_scores_list,
+                        NMS_sorted_cate_label_list,
+                        NMS_sorted_ins_list,
+                        label_list,
+                        mask_list):
+        """
+        Constructs matches list & scores list for every class
+
+        Input:
+        -----
+            NMS_sorted_scores_list, list, len(bz), (keep_instance,)
+            NMS_sorted_cate_label_list, list, len(bz), (keep_instance,)
+            NMS_sorted_ins_list, list, len(bz), (keep_instance, ori_H, ori_W)
+            label_list: list, len(batch_size), each (n_object, )
+            mask_list: list, len(batch_size), each (n_object, 800, 1088)
+
+        Output:
+        -----
+            match - shape (N, 5, 3) - matches with respect to true labels for all classes
+            score - shape (N, 5, 3) - scores with respect to true labels for all classes
+            num_true - int          - total trues
+            num_positive - int      - total positives
+        """
+        match, score, num_true, num_positive = None, None, None
+
+        pass
+
+        return match, score, num_true, num_positive
+
+    def average_precision(match_values, score_values, total_trues, total_positives,
+                          threshold=0.6):
+        """
+        Input:
+        -----
+            match_values - shape (N,5) - matches with respect to true labels for a single class
+            score_values - shape (N,5) - objectness for a single class
+            total_trues     - int      - total number of true labels for a single class in the
+                                         entire dataset
+            total_positives - int      - total number of positive labels for a single class in the
+                                        entire dataset
+
+        Output:
+        -----
+            area, sorted_recall, sorted_precision
+        """
+        # please fill in the appropriate arguments
+        # compute the average precision as mentioned in the PDF.
+        # it might be helpful to use - from sklearn.metrics import auc
+        #   to compute area under the curve.
+        area, sorted_recall, sorted_precision = None, None, None
+        pass
+
+        return area, sorted_recall, sorted_precision
+
 
 from backbone import Resnet50Backbone
 from tqdm import tqdm
