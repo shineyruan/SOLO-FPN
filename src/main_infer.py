@@ -126,12 +126,12 @@ if __name__ == '__main__':
         cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                          for fpn_list in cate_gts_list]
 
-        loss = solo_head.loss(cate_pred_list,
-                              ins_pred_list,
-                              ins_gts_list,
-                              ins_ind_gts_list,
-                              cate_gts_list,
-                              solo_device)
+        loss, *_ = solo_head.loss(cate_pred_list,
+                                  ins_pred_list,
+                                  ins_gts_list,
+                                  ins_ind_gts_list,
+                                  cate_gts_list,
+                                  solo_device)
 
         avg_loss += loss.item()
         count += 1
