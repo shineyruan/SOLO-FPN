@@ -6,6 +6,7 @@ from scipy import ndimage
 from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask, cv2
 from functools import partial
 import logging
+from sklearn.metrics import auc
 
 import time
 
@@ -889,7 +890,33 @@ class SOLOHead(nn.Module):
         # it might be helpful to use - from sklearn.metrics import auc
         #   to compute area under the curve.
         area, sorted_recall, sorted_precision = None, None, None
-        pass
+
+        max_score = torch.max(score_values).item()
+        ln = torch.linspace(threshold, max_score, steps=100)
+        precision_mat = torch.zeros(101)
+        recall_mat = torch.zeros(101)
+
+        # iterate through the linspace
+        for i, th in enumerate(ln):
+            matches = match_values[score_values > th]
+            TP = torch.sum(matches)   # true positives
+            precision = 1
+            if total_positives > 0:
+                precision = TP / total_positives
+            
+            recall = 1
+            if total_trues > 0:
+                recall = TP / total_trues
+
+            precision_mat[i] = precision
+            recall_mat[i] = recall
+
+        recall_mat[100] = 0
+        precision_mat[100] = 1
+        sorted_idx = torch.argsort(recall_mat)
+        sorted_recall = recall_mat[sorted_idx]
+        sorted_precision = precision_mat[sorted_idx]
+        area = auc(sorted_recall, sorted_precision)
 
         return area, sorted_recall, sorted_precision
 
