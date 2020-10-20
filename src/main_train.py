@@ -91,10 +91,16 @@ if __name__ == '__main__':
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
 
+    list_avg_loss = []
+    list_cate_loss = []
+    list_dice_loss = []
+
     num_epochs = 36
     for epochs in range(start_epoch, num_epochs):
         count = 0
         avg_loss = 0
+        avg_cate_loss = 0
+        avg_dice_loss = 0
 
         # loop the image
         progress_bar = tqdm(enumerate(train_loader, 0))
@@ -142,16 +148,18 @@ if __name__ == '__main__':
             cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                              for fpn_list in cate_gts_list]
 
-            loss = solo_head.loss(cate_pred_list,
-                                  ins_pred_list,
-                                  ins_gts_list,
-                                  ins_ind_gts_list,
-                                  cate_gts_list,
-                                  solo_device)
+            loss, cate_loss, dice_loss = solo_head.loss(cate_pred_list,
+                                                        ins_pred_list,
+                                                        ins_gts_list,
+                                                        ins_ind_gts_list,
+                                                        cate_gts_list,
+                                                        solo_device)
             loss.backward()
             optimizer.step()
 
             avg_loss += loss.item()
+            avg_cate_loss += cate_loss.item()
+            avg_dice_loss += dice_loss.item()
             count += 1
 
             progress_bar.set_description("loss = %f" % loss.item())
@@ -161,7 +169,15 @@ if __name__ == '__main__':
         scheduler.step()
 
         avg_loss /= count
-        print("Epoch: {}, avg loss = {}".format(epochs, avg_loss))
+        avg_cate_loss /= count
+        avg_dice_loss /= count
+        print("Epoch: {}, loss = {}, cate_loss = {}, avg_dice_loss = {}".format(epochs, avg_loss,
+                                                                                avg_cate_loss,
+                                                                                avg_dice_loss))
+
+        list_avg_loss.append(avg_loss)
+        list_cate_loss.append(avg_cate_loss)
+        list_dice_loss.append(avg_dice_loss)
 
         path = os.path.join(checkpoints_path, 'solo_epoch' + str(epochs))
         torch.save({
@@ -169,5 +185,10 @@ if __name__ == '__main__':
             'model_state_dict': solo_head.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict(),
-            'train_running_loss': avg_loss
+            'train_running_loss': avg_loss,
+            'train_cate_loss': avg_cate_loss,
+            'train_dice_loss': avg_dice_loss,
+            'list_loss': list_avg_loss,
+            'list_cate_loss': list_cate_loss,
+            'list_dice_loss': list_dice_loss
         }, path)

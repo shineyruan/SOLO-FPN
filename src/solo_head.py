@@ -368,7 +368,7 @@ class SOLOHead(nn.Module):
         del cate_gts, cate_preds
 
         mask_lambda = 3
-        return L_cate + mask_lambda * L_mask
+        return L_cate + mask_lambda * L_mask, L_cate, L_mask
 
     # This function compute the DiceLoss
     # Input:
