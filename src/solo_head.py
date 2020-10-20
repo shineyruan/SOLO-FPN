@@ -425,7 +425,7 @@ class SOLOHead(nn.Module):
         # ins_gts_list: list, len(bz), list, len(fpn), (S^2, 2H_f, 2W_f)
         # ins_ind_gts_list: list, len(bz), list, len(fpn), (S^2,)
         # cate_gts_list: list, len(bz), list, len(fpn), (S, S), {1,2,3}
-    def target(self, ins_pred_list, bbox_list, label_list, mask_list):
+    def target(self, ins_pred_list, bbox_list, label_list, mask_list, device=torch.device("cpu")):
         # use MultiApply to compute ins_gts_list, ins_ind_gts_list, cate_gts_list.
         #       Parallel w.r.t. img mini-batch
         # remember, you want to construct target of the same resolution as prediction output
@@ -440,7 +440,8 @@ class SOLOHead(nn.Module):
                             bbox_list,
                             label_list,
                             mask_list,
-                            featmap_sizes=featmap_size_list)
+                            featmap_sizes=featmap_size_list,
+                            device=device)
 
         del featmap_size_list, bbox_list, label_list, mask_list
 
@@ -467,7 +468,8 @@ class SOLOHead(nn.Module):
                           gt_bboxes_raw,
                           gt_labels_raw,
                           gt_masks_raw,
-                          featmap_sizes=None):
+                          featmap_sizes=None,
+                          device=torch.device("cpu")):
         # finish single image target build
         # initial the output list, each entry for one featmap
         ins_label_list = []
@@ -503,9 +505,9 @@ class SOLOHead(nn.Module):
             _, num_grid_2, H_feat, W_feat = featmap_sizes[i]
             num_grid = int(np.sqrt(num_grid_2))
             # initialize outputs
-            ins_label = torch.zeros(num_grid_2, H_feat, W_feat)
-            cate_label = torch.zeros(num_grid, num_grid)
-            ins_ind_label = torch.zeros(num_grid_2, dtype=torch.bool)
+            ins_label = torch.zeros(num_grid_2, H_feat, W_feat, device=device)
+            cate_label = torch.zeros(num_grid, num_grid, device=device)
+            ins_ind_label = torch.zeros(num_grid_2, dtype=torch.bool, device=device)
 
             # iterate over each object in the level
             for object_idx in group:
@@ -515,7 +517,7 @@ class SOLOHead(nn.Module):
                                               mode='bilinear', align_corners=False)
                 mask_rescaled = torch.squeeze(mask_rescaled)
 
-                c_y, c_x = ndimage.center_of_mass(mask_rescaled.numpy())
+                c_y, c_x = ndimage.center_of_mass(mask_rescaled.cpu().numpy())
                 w = 0.2 * bbox_w[object_idx]
                 h = 0.2 * bbox_h[object_idx]
 
@@ -814,8 +816,27 @@ class SOLOHead(nn.Module):
                   color_list,
                   img,
                   iter_ind):
-        # TODO: Plot predictions
-        pass
+        # Plot predictions
+        # target image recover, for each image, recover their segmentation in 5 FPN levels.
+        # This is an important visual check flag.
+        bz, _, ori_h, ori_w = img.size()
+        for batch_id in range(bz):
+            masks = []
+            for ins_id in range(NMS_sorted_ins_list[batch_id].shape[0]):
+                class_id = NMS_sorted_cate_label_list[batch_id][ins_id]
+                mask = NMS_sorted_ins_list[batch_id][ins_id]
+                mask = (mask > 0.5).type(torch.float)
+                masks.append(mask)
+
+            masks = torch.stack(masks)
+            outim = visual_bbox_mask(img[batch_id], masks)
+
+            cv2.imwrite("./testfig/visual_plotInfer_"
+                        + str(iter_ind) + "_" + str(batch_id) + "_" + str(ins_id)
+                        + ".png", outim)
+            cv2.imshow("visualize infer", outim)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
 
 
 from backbone import Resnet50Backbone
