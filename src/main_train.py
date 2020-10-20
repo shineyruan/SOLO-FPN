@@ -126,10 +126,15 @@ if __name__ == '__main__':
 
             del fpn_feat_list
 
+            # compute the target on GPU
+            bbox_list = [item.to(solo_device) for item in bbox_list]
+            label_list = [item.to(solo_device) for item in label_list]
+            mask_list = [item.to(solo_device) for item in mask_list]
             ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
                                                                              bbox_list,
                                                                              label_list,
-                                                                             mask_list)
+                                                                             mask_list,
+                                                                             device=solo_device)
             del label_list, mask_list, bbox_list
 
             ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
