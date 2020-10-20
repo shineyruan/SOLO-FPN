@@ -685,8 +685,9 @@ class SOLOHead(nn.Module):
 
         # only keep the masks with the k highest NMS scores
         nms_sorted_scores, nms_sorted_idx = torch.sort(matrix_NMS_scores, descending=True)
-        nms_sorted_cate_label = cate_sorted_pred_img[nms_sorted_idx][:5]
-        nms_sorted_ins = ins_sorted_pred_img[nms_sorted_idx][:5]
+        nms_sorted_cate_label = \
+            cate_sorted_pred_img[nms_sorted_idx][:self.postprocess_cfg['keep_instance']]
+        nms_sorted_ins = ins_sorted_pred_img[nms_sorted_idx][:self.postprocess_cfg['keep_instance']]
 
         del ins_sorted_pred_img, cate_sorted_pred_img, matrix_NMS_scores
         del nms_sorted_idx
@@ -825,7 +826,7 @@ class SOLOHead(nn.Module):
             for ins_id in range(NMS_sorted_ins_list[batch_id].shape[0]):
                 class_id = NMS_sorted_cate_label_list[batch_id][ins_id]
                 mask = NMS_sorted_ins_list[batch_id][ins_id]
-                mask = (mask > 0.5).type(torch.float)
+                mask = (mask > self.postprocess_cfg['ins_thresh']).type(torch.float)
                 masks.append(mask)
 
             masks = torch.stack(masks)
@@ -857,14 +858,48 @@ class SOLOHead(nn.Module):
 
         Output:
         -----
-            match - shape (N, 5, 3) - matches with respect to true labels for all classes
-            score - shape (N, 5, 3) - scores with respect to true labels for all classes
-            num_true - int          - total trues
-            num_positive - int      - total positives
+            match       - shape (N, 5, 3)   - matches with respect to true labels for all classes
+            score       - shape (N, 5, 3)   - scores with respect to true labels for all classes
+            num_true        - shape (3,)    - total trues per class
+            num_positive    - shape (3,)    - total positives
         """
-        match, score, num_true, num_positive = None, None, None
+        match = torch.zeros(len(NMS_sorted_cate_label_list),
+                            NMS_sorted_cate_label_list[0].size()[0],
+                            NMS_sorted_cate_label_list[0].size()[1])
+        score = torch.zeros(match.size())
+        num_true = torch.zeros(NMS_sorted_cate_label_list[0].size()[1])
+        num_positive = torch.zeros(NMS_sorted_cate_label_list[0].size()[1])
 
-        pass
+        batch_size = len(label_list)
+
+        for bz in range(batch_size):
+            # calculate trues
+            label = label_list[bz]
+            num_true[label[label > 0].type(torch.long) - 1] += 1
+
+            # calculate positives
+            cate = torch.argmax(NMS_sorted_cate_label_list[bz], dim=1)
+            num_positive[cate.type(torch.long)] += 1
+
+            for i_pred, class_pred in enumerate(cate):
+                if class_pred + 1 in label:
+
+                    # retrieve class gt label
+                    i_gt = (label == class_pred + 1).nonzero(as_tuple=False).item()
+
+                    # retrieve masks
+                    mask_pred = NMS_sorted_ins_list[bz][i_pred]
+                    # create a hard mask for mask_pred
+                    mask_pred = (mask_pred > self.postprocess_cfg['ins_thresh']).type(torch.float)
+                    mask_gt = mask_list[bz][i_gt]
+
+                    # compute IOU
+                    intersection = torch.sum(mask_pred * mask_gt)
+                    iou = intersection / (torch.sum(mask_pred) + torch.sum(mask_gt) - intersection)
+
+                    if iou > self.postprocess_cfg['IoU_thresh']:
+                        match[bz, i_pred, class_pred] = 1
+                        score[bz, i_pred, class_pred] = NMS_sorted_scores_list[bz][i_pred]
 
         return match, score, num_true, num_positive
 
