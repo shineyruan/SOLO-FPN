@@ -938,7 +938,7 @@ class SOLOHead(nn.Module):
             precision = 1
             if total_positives > 0:
                 precision = TP / total_positives
-            
+
             recall = 1
             if total_trues > 0:
                 recall = TP / total_trues
