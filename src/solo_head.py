@@ -572,6 +572,7 @@ class SOLOHead(nn.Module):
                     ins_pred_list,
                     cate_pred_list,
                     ori_size,
+                    device,
                     cate_thresh=0.5,
                     ins_thresh=0.5):
         """
@@ -608,14 +609,14 @@ class SOLOHead(nn.Module):
         #
         cate_pred_img = cate_pred_list[0]
         ins_pred_img = ins_pred_list[0]
-        for i_fpn in range(len(cate_pred_list)):
+        for i_fpn in range(1, len(cate_pred_list)):
             cate_pred_img = torch.cat([cate_pred_img, cate_pred_list[i_fpn]], dim=1)
             ins_pred_img = torch.cat([ins_pred_img, ins_pred_list[i_fpn]], dim=1)
 
         del ins_pred_list, cate_pred_list
 
-        ins_pred_img_list = [ins for ins in ins_pred_img]
-        cate_pred_img_list = [cate for cate in cate_pred_img]
+        ins_pred_img_list = [ins.to(device) for ins in ins_pred_img]
+        cate_pred_img_list = [cate.to(device) for cate in cate_pred_img]
 
         del cate_pred_img, ins_pred_img
 
@@ -625,7 +626,8 @@ class SOLOHead(nn.Module):
                             cate_pred_img_list,
                             ori_size=ori_size,
                             cate_thresh=self.postprocess_cfg['cate_thresh'],
-                            ins_thresh=self.postprocess_cfg['ins_thresh'])
+                            ins_thresh=self.postprocess_cfg['ins_thresh'],
+                            device=device)
 
         return NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list
 
@@ -634,7 +636,8 @@ class SOLOHead(nn.Module):
                        cate_pred_img,
                        ori_size=None,
                        cate_thresh=0.5,
-                       ins_thresh=0.5):
+                       ins_thresh=0.5,
+                       device=torch.device("cpu")):
         """
         This function Postprocess on single img
 
@@ -657,7 +660,7 @@ class SOLOHead(nn.Module):
         cate_max_idx = (cate_max > cate_thresh).nonzero(as_tuple=True)[0]
 
         # For each one of the grid cell with c_max > cate_thresh, and mask m, find their score
-        scores = torch.zeros(ins_pred_img.size()[0])
+        scores = torch.zeros(ins_pred_img.size()[0]).to(device)
         for i in cate_max_idx:
             c_max = cate_max[i]
 
@@ -680,6 +683,7 @@ class SOLOHead(nn.Module):
         # apply matrix NMS to get NMS scores
         matrix_NMS_scores = self.MatrixNMS(ins_sorted_pred_img[:idx_nonzero],
                                            scores_sorted[:idx_nonzero],
+                                           device,
                                            ins_thresh=ins_thresh)
 
         del scores_sorted
@@ -699,7 +703,8 @@ class SOLOHead(nn.Module):
 
         return nms_sorted_scores, nms_sorted_cate_label, nms_sorted_ins
 
-    def MatrixNMS(self, sorted_ins, sorted_scores, method='gauss', gauss_sigma=0.5, ins_thresh=0.5):
+    def MatrixNMS(self, sorted_ins, sorted_scores, device,
+                  method='gauss', gauss_sigma=0.5, ins_thresh=0.5):
         """
         This function perform matrix NMS
 
@@ -865,11 +870,11 @@ class SOLOHead(nn.Module):
             num_positive    - shape (3,)    - total positives
         """
         match = torch.zeros(len(NMS_sorted_cate_label_list),
-                            NMS_sorted_cate_label_list[0].size()[0],
-                            NMS_sorted_cate_label_list[0].size()[1])
+                            self.postprocess_cfg['keep_instance'],
+                            self.cate_out_channels)
         score = torch.zeros(match.size())
-        num_true = torch.zeros(NMS_sorted_cate_label_list[0].size()[1])
-        num_positive = torch.zeros(NMS_sorted_cate_label_list[0].size()[1])
+        num_true = torch.zeros(self.postprocess_cfg['keep_instance'])
+        num_positive = torch.zeros(self.postprocess_cfg['keep_instance'])
 
         batch_size = len(label_list)
 
@@ -886,21 +891,24 @@ class SOLOHead(nn.Module):
                 if class_pred + 1 in label:
 
                     # retrieve class gt label
-                    i_gt = (label == class_pred + 1).nonzero(as_tuple=False).item()
+                    i_gt_list = (label == class_pred + 1).nonzero(as_tuple=False)
 
-                    # retrieve masks
-                    mask_pred = NMS_sorted_ins_list[bz][i_pred]
-                    # create a hard mask for mask_pred
-                    mask_pred = (mask_pred > self.postprocess_cfg['ins_thresh']).type(torch.float)
-                    mask_gt = mask_list[bz][i_gt]
+                    for i_gt in i_gt_list:
+                        # retrieve masks
+                        mask_pred = NMS_sorted_ins_list[bz][i_pred]
+                        # create a hard mask for mask_pred
+                        mask_pred = (mask_pred > self.postprocess_cfg['ins_thresh']).type(
+                            torch.float)
+                        mask_gt = mask_list[bz][i_gt]
 
-                    # compute IOU
-                    intersection = torch.sum(mask_pred * mask_gt)
-                    iou = intersection / (torch.sum(mask_pred) + torch.sum(mask_gt) - intersection)
+                        # compute IOU
+                        intersection = torch.sum(mask_pred * mask_gt)
+                        iou = intersection / (torch.sum(mask_pred) +
+                                              torch.sum(mask_gt) - intersection)
 
-                    if iou > self.postprocess_cfg['IoU_thresh']:
-                        match[bz, i_pred, class_pred] = 1
-                        score[bz, i_pred, class_pred] = NMS_sorted_scores_list[bz][i_pred]
+                        if iou > self.postprocess_cfg['IoU_thresh']:
+                            match[bz, i_pred, class_pred] = 1
+                            score[bz, i_pred, class_pred] = NMS_sorted_scores_list[bz][i_pred]
 
         return match, score, num_true, num_positive
 
