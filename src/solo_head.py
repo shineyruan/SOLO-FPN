@@ -942,7 +942,7 @@ class SOLOHead(nn.Module):
         # iterate through the linspace
         for i, th in enumerate(ln):
             matches = match_values[score_values > th]
-            TP = torch.sum(matches)   # true positives
+            TP = torch.sum(matches)  # true positives
             precision = 1
             if total_positives > 0:
                 precision = TP / total_positives
