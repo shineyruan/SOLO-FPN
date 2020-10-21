@@ -119,7 +119,6 @@ if __name__ == '__main__':
                                                                          label_list,
                                                                          mask_list,
                                                                          device=solo_device)
-        del label_list, mask_list, bbox_list
 
         ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                             for fpn_list in ins_ind_gts_list]
@@ -138,6 +137,14 @@ if __name__ == '__main__':
 
         NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list = \
             solo_head.PostProcess(ins_pred_list, cate_pred_list, ori_size)
+
+        match, score, num_true, num_positive = solo_head.solo_evaluation(NMS_sorted_score_list,
+                                                                         NMS_sorted_cate_label_list,
+                                                                         NMS_sorted_ins_list,
+                                                                         label_list, mask_list)
+
+        del label_list, mask_list, bbox_list
+
         solo_head.PlotInfer(NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list,
                             color_list=["jet", "ocean", "Spectral"],
                             img=img,
