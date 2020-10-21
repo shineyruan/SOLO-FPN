@@ -904,7 +904,7 @@ class SOLOHead(nn.Module):
 
         return match, score, num_true, num_positive
 
-    def average_precision(match_values, score_values, total_trues, total_positives,
+    def average_precision(self, match_values, score_values, total_trues, total_positives,
                           threshold=0.6):
         """
         Input:

@@ -89,6 +89,8 @@ if __name__ == '__main__':
     # loop the image
     progress_bar = tqdm(enumerate(test_loader, 0))
     for iter, data in progress_bar:
+        if iter > 3:
+            break
         img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
         img = img.to(resnet_device)
 
@@ -114,7 +116,7 @@ if __name__ == '__main__':
 
         del fpn_feat_list
 
-        # TODO: compute the target on GPU
+        # compute the target on GPU
         bbox_list = [item.to(solo_device) for item in bbox_list]
         label_list = [item.to(solo_device) for item in label_list]
         mask_list = [item.to(solo_device) for item in mask_list]
@@ -147,21 +149,14 @@ if __name__ == '__main__':
                                                                          NMS_sorted_ins_list,
                                                                          label_list, mask_list)
 
-        del label_list, mask_list, bbox_list
-
-        solo_head.PlotInfer(NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list,
+        solo_head.PlotInfer(NMS_sorted_score_list,
+                            NMS_sorted_cate_label_list,
+                            NMS_sorted_ins_list,
                             color_list=["jet", "ocean", "Spectral"],
                             img=img,
                             iter_ind=iter)
 
         del img
-
-        match, score, num_true, num_positive = \
-            solo_head.solo_evaluation(NMS_sorted_score_list,
-                                      NMS_sorted_cate_label_list,
-                                      NMS_sorted_ins_list,
-                                      label_list,
-                                      mask_list)
 
         trues_per_batch.append(num_true)
         positives_per_batch.append(num_positive)
@@ -184,19 +179,20 @@ if __name__ == '__main__':
     match_values = torch.cat(match_values)
     score_values = torch.cat(score_values)
 
-    import pdb
-    pdb.set_trace()
     # calculate mAP
     AP = 0
     cnt = 0
     for class_i in range(3):
         if torch.sum(match_values[:, :, class_i]) > 0:
-            area, sorted_recall, sorted_precision = average_precision(match_values[:, :, class_i],
-                                                                      score_values[:, :, class_i],
-                                                                      trues_per_batch[class_i],
-                                                                      positives_per_batch[class_i])
+            area, sorted_recall, sorted_precision = \
+                solo_head.average_precision(match_values[:, :, class_i],
+                                            score_values[:, :, class_i],
+                                            trues_per_batch[class_i],
+                                            positives_per_batch[class_i],
+                                            threshold=0)
+            print(area)
             AP += area
             cnt += 1
     mAP = AP if cnt == 0 else AP / cnt
     # calculate mean loss
-    print('          testing mAP   {}'.format(mAP))
+    print('testing mAP   {}'.format(mAP))
