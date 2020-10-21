@@ -1,5 +1,4 @@
 import torch
-import cv2
 from backbone import Resnet50Backbone
 from tqdm import tqdm
 from dataset import BuildDataLoader, BuildDataset, visual_bbox_mask
@@ -82,6 +81,11 @@ if __name__ == '__main__':
     count = 0
     avg_loss = 0
 
+    trues_per_batch = []
+    positives_per_batch = []
+    match_values = []
+    score_values = []
+
     # loop the image
     progress_bar = tqdm(enumerate(test_loader, 0))
     for iter, data in progress_bar:
@@ -119,7 +123,6 @@ if __name__ == '__main__':
                                                                          label_list,
                                                                          mask_list,
                                                                          device=solo_device)
-        del label_list, mask_list, bbox_list
 
         ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                             for fpn_list in ins_ind_gts_list]
@@ -145,9 +148,47 @@ if __name__ == '__main__':
 
         del img
 
+        match, score, num_true, num_positive = \
+            solo_head.solo_evaluation(NMS_sorted_score_list,
+                                      NMS_sorted_cate_label_list,
+                                      NMS_sorted_ins_list,
+                                      label_list,
+                                      mask_list)
+
+        trues_per_batch.append(num_true)
+        positives_per_batch.append(num_positive)
+        match_values.append(match)
+        score_values.append(score)
+
         progress_bar.set_description("loss = %f" % loss.item())
 
+        del label_list, mask_list, bbox_list
         del cate_pred_list, ins_pred_list, ins_gts_list, ins_ind_gts_list, cate_gts_list
 
     avg_loss /= count
     print("test avg loss = {}".format(avg_loss))
+
+    # organize data
+    trues_per_batch = torch.stack(trues_per_batch)
+    positives_per_batch = torch.stack(positives_per_batch)
+    trues_per_batch = torch.sum(trues_per_batch, dim=0)
+    positives_per_batch = torch.sum(positives_per_batch, dim=0)
+    match_values = torch.cat(match_values)
+    score_values = torch.cat(score_values)
+
+    import pdb
+    pdb.set_trace()
+    # calculate mAP
+    AP = 0
+    cnt = 0
+    for class_i in range(3):
+        if torch.sum(match_values[:, :, class_i]) > 0:
+            area, sorted_recall, sorted_precision = average_precision(match_values[:, :, class_i],
+                                                                      score_values[:, :, class_i],
+                                                                      trues_per_batch[class_i],
+                                                                      positives_per_batch[class_i])
+            AP += area
+            cnt += 1
+    mAP = AP if cnt == 0 else AP / cnt
+    # calculate mean loss
+    print('          testing mAP   {}'.format(mAP))
