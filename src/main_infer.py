@@ -22,6 +22,7 @@ if __name__ == '__main__':
     labels_path = "data/hw3_mycocodata_labels_comp_zlib.npy"
     bboxes_path = "data/hw3_mycocodata_bboxes_comp_zlib.npy"
     checkpoints_path = "checkpoints/"
+    mAP_path = "mAP/"
 
     if IN_COLAB:
         imgs_path = os.path.join(COLAB_ROOT, imgs_path)
@@ -29,6 +30,7 @@ if __name__ == '__main__':
         labels_path = os.path.join(COLAB_ROOT, labels_path)
         bboxes_path = os.path.join(COLAB_ROOT, bboxes_path)
         checkpoints_path = os.path.join(COLAB_ROOT, checkpoints_path)
+        mAP_path = os.path.join(COLAB_ROOT, mAP_path)
 
     os.makedirs(checkpoints_path, exist_ok=True)
 
@@ -62,7 +64,8 @@ if __name__ == '__main__':
     solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     if not IN_COLAB:
         # if not in Google Colab, save GPU memory for SOLO head
-        solo_device = torch.device("cpu")
+        # solo_device = torch.device("cpu")
+        pass
 
     torch.cuda.empty_cache()
 
@@ -78,6 +81,8 @@ if __name__ == '__main__':
     checkpoint = torch.load(path)
     solo_head.load_state_dict(checkpoint['model_state_dict'])
 
+    del checkpoint
+
     count = 0
     avg_loss = 0
 
@@ -89,84 +94,96 @@ if __name__ == '__main__':
     # loop the image
     progress_bar = tqdm(enumerate(test_loader, 0))
     for iter, data in progress_bar:
-        if iter > 3:
-            break
-        img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
-        img = img.to(resnet_device)
-
-        # fpn is a dict
         with torch.no_grad():
+            img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
+            img = img.to(resnet_device)
+
+            # fpn is a dict
             backout = resnet50_fpn(img)
 
-        ori_size = img.size()[-2:]
+            ori_size = img.size()[-2:]
 
-        if solo_device == torch.device("cpu") and resnet_device == torch.device("cuda:0"):
-            fpn_feat_list = [val.cpu() for val in list(backout.values())]
-        elif solo_device == torch.device("cuda:0") and resnet_device == torch.device("cpu"):
-            fpn_feat_list = [val.cuda() for val in list(backout.values())]
-        else:
-            fpn_feat_list = [val for val in list(backout.values())]
+            if solo_device == torch.device("cpu") and resnet_device == torch.device("cuda:0"):
+                fpn_feat_list = [val.cpu() for val in list(backout.values())]
+            elif solo_device == torch.device("cuda:0") and resnet_device == torch.device("cpu"):
+                fpn_feat_list = [val.cuda() for val in list(backout.values())]
+            else:
+                fpn_feat_list = [val for val in list(backout.values())]
 
-        del backout
+            del backout
 
-        cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
-                                                          solo_device,
-                                                          eval=True,
-                                                          ori_size=ori_size)
+            cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
+                                                              solo_device,
+                                                              eval=True,
+                                                              ori_size=ori_size)
 
-        del fpn_feat_list
+            del fpn_feat_list
 
-        # compute the target on GPU
-        bbox_list = [item.to(solo_device) for item in bbox_list]
-        label_list = [item.to(solo_device) for item in label_list]
-        mask_list = [item.to(solo_device) for item in mask_list]
-        ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
-                                                                         bbox_list,
-                                                                         label_list,
-                                                                         mask_list,
-                                                                         device=solo_device)
+            # compute the target on GPU
+            bbox_list = [item.to(solo_device) for item in bbox_list]
+            label_list = [item.to(solo_device) for item in label_list]
+            mask_list = [item.to(solo_device) for item in mask_list]
 
-        ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
-                            for fpn_list in ins_ind_gts_list]
-        cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
-                         for fpn_list in cate_gts_list]
+            ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
+                                                                             bbox_list,
+                                                                             label_list,
+                                                                             mask_list,
+                                                                             device=solo_device)
 
-        loss, *_ = solo_head.loss(cate_pred_list,
-                                  ins_pred_list,
-                                  ins_gts_list,
-                                  ins_ind_gts_list,
-                                  cate_gts_list,
-                                  solo_device)
+            del bbox_list
 
-        avg_loss += loss.item()
-        count += 1
+            ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
+                                for fpn_list in ins_ind_gts_list]
+            cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
+                             for fpn_list in cate_gts_list]
 
-        NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list = \
-            solo_head.PostProcess(ins_pred_list, cate_pred_list, ori_size)
+            loss, *_ = solo_head.loss(cate_pred_list,
+                                      ins_pred_list,
+                                      ins_gts_list,
+                                      ins_ind_gts_list,
+                                      cate_gts_list,
+                                      solo_device)
 
-        match, score, num_true, num_positive = solo_head.solo_evaluation(NMS_sorted_score_list,
-                                                                         NMS_sorted_cate_label_list,
-                                                                         NMS_sorted_ins_list,
-                                                                         label_list, mask_list)
+            avg_loss += loss.item()
+            count += 1
 
-        solo_head.PlotInfer(NMS_sorted_score_list,
-                            NMS_sorted_cate_label_list,
-                            NMS_sorted_ins_list,
-                            color_list=["jet", "ocean", "Spectral"],
-                            img=img,
-                            iter_ind=iter)
+            del ins_gts_list, ins_ind_gts_list, cate_gts_list
 
-        del img
+            ins_pred_list_cpu = [item.cpu() for item in ins_pred_list]
+            cate_pred_list_cpu = [item.cpu() for item in cate_pred_list]
+            label_list_cpu = [item.cpu() for item in label_list]
+            mask_list_cpu = [item.cpu() for item in mask_list]
 
-        trues_per_batch.append(num_true)
-        positives_per_batch.append(num_positive)
-        match_values.append(match)
-        score_values.append(score)
+            del cate_pred_list, ins_pred_list, label_list, mask_list
 
-        progress_bar.set_description("loss = %f" % loss.item())
+            NMS_sorted_score_list, NMS_sorted_cate_label_list, NMS_sorted_ins_list = \
+                solo_head.PostProcess(ins_pred_list_cpu, cate_pred_list_cpu,
+                                      ori_size, device=torch.device("cpu"))
 
-        del label_list, mask_list, bbox_list
-        del cate_pred_list, ins_pred_list, ins_gts_list, ins_ind_gts_list, cate_gts_list
+            match, score, num_true, num_positive = \
+                solo_head.solo_evaluation(NMS_sorted_score_list,
+                                          NMS_sorted_cate_label_list,
+                                          NMS_sorted_ins_list,
+                                          label_list_cpu, mask_list_cpu)
+
+            # solo_head.PlotInfer(NMS_sorted_score_list,
+            #                     NMS_sorted_cate_label_list,
+            #                     NMS_sorted_ins_list,
+            #                     color_list=["jet", "ocean", "Spectral"],
+            #                     img=img,
+            #                     iter_ind=iter)
+
+            del ins_pred_list_cpu, cate_pred_list_cpu
+            del label_list_cpu, mask_list_cpu
+
+            del img
+
+            trues_per_batch.append(num_true)
+            positives_per_batch.append(num_positive)
+            match_values.append(match)
+            score_values.append(score)
+
+            progress_bar.set_description("loss = %f" % loss.item())
 
     avg_loss /= count
     print("test avg loss = {}".format(avg_loss))
@@ -179,7 +196,20 @@ if __name__ == '__main__':
     match_values = torch.cat(match_values)
     score_values = torch.cat(score_values)
 
+    os.makedirs(mAP_path, exist_ok=True)
+    path = os.path.join(mAP_path, 'matches')
+    torch.save({
+        'trues per batch': trues_per_batch,
+        'positives per batch': positives_per_batch,
+        'match_values': match_values,
+        'score_values': score_values
+    }, path)
+
     # calculate mAP
+    list_sorted_recall = []
+    list_sorted_precision = []
+    list_AP = []
+
     AP = 0
     cnt = 0
     for class_i in range(3):
@@ -190,9 +220,21 @@ if __name__ == '__main__':
                                             trues_per_batch[class_i],
                                             positives_per_batch[class_i],
                                             threshold=0)
-            print(area)
             AP += area
             cnt += 1
+
+            list_sorted_recall.append(sorted_recall)
+            list_sorted_precision.append(sorted_precision)
+            list_AP.append(AP)
+
     mAP = AP if cnt == 0 else AP / cnt
     # calculate mean loss
     print('testing mAP   {}'.format(mAP))
+
+    path = os.path.join(mAP_path, 'mAP')
+    torch.save({
+        'sorted_recalls': list_sorted_recall,
+        'sorted_precisions': list_sorted_precision,
+        'AP': list_AP,
+        'mAP': mAP
+    }, path)
