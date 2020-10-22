@@ -10,7 +10,7 @@ In order to run the whole program, you have to first install corresponding packa
 conda env create -f environment.yml
 ```
 
-To test the dataset builder and loader, run 
+To test the dataset builder and loader, run
 ```bash
 python src/dataset.py
 ```
@@ -19,6 +19,17 @@ To test the SOLO-head, run
 ```bash
 python src/solo_head.py
 ```
+
+To train the network, run
+```bash
+python src/main_train.py
+```
+
+To test the network, run
+```bash
+python src/main_infer.py
+```
+
 
 
 ## References
