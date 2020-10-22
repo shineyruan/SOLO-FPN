@@ -656,7 +656,7 @@ class SOLOHead(nn.Module):
         # PostProcess on single image.
 
         # Find the grid cells which have maximum category prediction c_max >cate_thresh
-        cate_max = torch.max(cate_pred_img, dim=1)[0]
+        cate_max = torch.max(cate_pred_img, dim=1).values
         cate_max_idx = (cate_max > cate_thresh).nonzero(as_tuple=True)[0]
 
         # For each one of the grid cell with c_max > cate_thresh, and mask m, find their score
@@ -673,15 +673,15 @@ class SOLOHead(nn.Module):
 
         # sort the masks according to their scores
         scores_sorted, scores_sorted_idx = torch.sort(scores, descending=True)
-        idx_nonzero = torch.nonzero(scores, as_tuple=False).size()[0]
-        ins_sorted_pred_img = ins_pred_img[scores_sorted_idx]
-        cate_sorted_pred_img = cate_pred_img[scores_sorted_idx]
+        idx_nonzero = torch.nonzero(scores_sorted, as_tuple=False).size()[0]
+        ins_sorted_pred_img = ins_pred_img[scores_sorted_idx][:idx_nonzero]
+        cate_sorted_pred_img = cate_pred_img[scores_sorted_idx][:idx_nonzero]
 
         del scores, scores_sorted_idx
         del ins_pred_img, cate_pred_img
 
         # apply matrix NMS to get NMS scores
-        matrix_NMS_scores = self.MatrixNMS(ins_sorted_pred_img[:idx_nonzero],
+        matrix_NMS_scores = self.MatrixNMS(ins_sorted_pred_img,
                                            scores_sorted[:idx_nonzero],
                                            device,
                                            ins_thresh=ins_thresh)
@@ -690,9 +690,11 @@ class SOLOHead(nn.Module):
 
         # only keep the masks with the k highest NMS scores
         nms_sorted_scores, nms_sorted_idx = torch.sort(matrix_NMS_scores, descending=True)
+        keep_instance = self.postprocess_cfg['keep_instance']
         nms_sorted_cate_label = \
-            cate_sorted_pred_img[nms_sorted_idx][:self.postprocess_cfg['keep_instance']]
-        nms_sorted_ins = ins_sorted_pred_img[nms_sorted_idx][:self.postprocess_cfg['keep_instance']]
+            cate_sorted_pred_img[nms_sorted_idx][:keep_instance]
+        nms_sorted_ins = \
+            ins_sorted_pred_img[nms_sorted_idx][:keep_instance]
 
         del ins_sorted_pred_img, cate_sorted_pred_img, matrix_NMS_scores
         del nms_sorted_idx
@@ -744,7 +746,7 @@ class SOLOHead(nn.Module):
         #
         #   since we would like to minimize f(IOU(*, i)), we wish to find max(IOU(*, i))
         #
-        ious_i = torch.max(ious, dim=0)[0]
+        ious_i = torch.max(ious, dim=0).values
         ious_i = ious_i.expand(n_act, n_act).T
 
         # Matrix NMS
@@ -754,7 +756,7 @@ class SOLOHead(nn.Module):
             decay = (1 - ious) / (1 - ious_i)
 
         # min of f(IOU(i, j)) / f(IOU(*, i))
-        decay = torch.min(decay)
+        decay = torch.min(decay, dim=0).values
         return decay * sorted_scores
 
     # -----------------------------------
@@ -829,21 +831,24 @@ class SOLOHead(nn.Module):
         bz, _, ori_h, ori_w = img.size()
         for batch_id in range(bz):
             masks = []
-            for ins_id in range(NMS_sorted_ins_list[batch_id].shape[0]):
-                class_id = NMS_sorted_cate_label_list[batch_id][ins_id]
-                mask = NMS_sorted_ins_list[batch_id][ins_id]
-                mask = (mask > self.postprocess_cfg['ins_thresh']).type(torch.float)
-                masks.append(mask)
+            labels = []
+            if NMS_sorted_ins_list[batch_id].shape[0] > 0:
+                for ins_id in range(NMS_sorted_ins_list[batch_id].shape[0]):
+                    class_id = NMS_sorted_cate_label_list[batch_id][ins_id]
+                    labels.append(int(torch.argmax(class_id)))
+                    mask = NMS_sorted_ins_list[batch_id][ins_id]
+                    mask = (mask > self.postprocess_cfg['ins_thresh']).type(torch.float)
+                    masks.append(mask)
 
             masks = torch.stack(masks)
-            outim = visual_bbox_mask(img[batch_id], masks)
+            outim = visual_bbox_mask(img[batch_id], masks, labels=labels)
 
             cv2.imwrite("./testfig/visual_plotInfer_"
                         + str(iter_ind) + "_" + str(batch_id) + "_" + str(ins_id)
                         + ".png", outim)
-            cv2.imshow("visualize infer", outim)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+            # cv2.imshow("visualize infer", outim)
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
 
     def solo_evaluation(self,
                         NMS_sorted_scores_list,
