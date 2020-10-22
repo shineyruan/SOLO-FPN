@@ -15,7 +15,7 @@ COLAB_ROOT = "/content/drive/My Drive/CIS680_2019/SOLO-FPN"
 
 if __name__ == '__main__':
     if not IN_COLAB:
-        coloredlogs.install(level='DEBUG')
+        coloredlogs.install(level='INFO')
     # file path and make a list
     imgs_path = 'data/hw3_mycocodata_img_comp_zlib.h5'
     masks_path = 'data/hw3_mycocodata_mask_comp_zlib.h5'
@@ -166,12 +166,12 @@ if __name__ == '__main__':
                                           NMS_sorted_ins_list,
                                           label_list_cpu, mask_list_cpu)
 
-            # solo_head.PlotInfer(NMS_sorted_score_list,
-            #                     NMS_sorted_cate_label_list,
-            #                     NMS_sorted_ins_list,
-            #                     color_list=["jet", "ocean", "Spectral"],
-            #                     img=img,
-            #                     iter_ind=iter)
+            solo_head.PlotInfer(NMS_sorted_score_list,
+                                NMS_sorted_cate_label_list,
+                                NMS_sorted_ins_list,
+                                color_list=["jet", "ocean", "Spectral"],
+                                img=img,
+                                iter_ind=iter)
 
             del ins_pred_list_cpu, cate_pred_list_cpu
             del label_list_cpu, mask_list_cpu
@@ -225,7 +225,7 @@ if __name__ == '__main__':
 
             list_sorted_recall.append(sorted_recall)
             list_sorted_precision.append(sorted_precision)
-            list_AP.append(AP)
+            list_AP.append(area)
 
     mAP = AP if cnt == 0 else AP / cnt
     # calculate mean loss
