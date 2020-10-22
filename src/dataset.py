@@ -158,8 +158,12 @@ def visual_bbox_mask(image, masks=None, bboxs=None, labels=None):
     if masks is not None:
         for i in range(masks.shape[0]):
             outim = outim.astype(np.uint32)
-            outim[:, :, (i + 2) % 3] = \
-                np.clip(outim[:, :, (i + 2) % 3] + masks[i].cpu().numpy() * 100, 0, 255)
+            if labels is None:
+                outim[:, :, (i + 2) % 3] = \
+                    np.clip(outim[:, :, (i + 2) % 3] + masks[i].cpu().numpy() * 100, 0, 255)
+            else:
+                outim[:, :, labels[i]] = \
+                    np.clip(outim[:, :, labels[i]] + masks[i].cpu().numpy() * 100, 0, 255)
             outim = outim.astype(np.uint8)
             if labels is not None and bboxs is not None:
                 outim = cv2.putText(outim,
