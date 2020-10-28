@@ -1,0 +1,3 @@
+/home/ryan/repos/SOLO-FPN/testfig/visual_plotInfer_114_0_4.png
+/home/ryan/repos/SOLO-FPN/testfig/visual_plotInfer_138_1_4.png
+/home/ryan/repos/SOLO-FPN/testfig/visual_plotInfer_60_1_4.png
