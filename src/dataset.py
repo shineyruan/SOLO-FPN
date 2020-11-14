@@ -89,16 +89,17 @@ class BuildDataset(torch.utils.data.Dataset):
         mask = mask.permute(0, 2, 1)
         mask = F.pad(mask, pad=(11, 11))
 
-        bbox[:, 0] = bbox[:, 0] / 400 * 1066 + 11
-        bbox[:, 2] = bbox[:, 2] / 400 * 1066 + 11
-        bbox[:, 1] = bbox[:, 1] / 300 * 800
-        bbox[:, 3] = bbox[:, 3] / 300 * 800
-        bbox = torch.tensor(bbox)
+        bbox_tensor = torch.tensor(bbox)
+        bbox_temp = torch.zeros(bbox.shape)
+        bbox_temp[:, 0] = bbox_tensor[:, 0] / 400 * 1066 + 11
+        bbox_temp[:, 2] = bbox_tensor[:, 2] / 400 * 1066 + 11
+        bbox_temp[:, 1] = bbox_tensor[:, 1] / 300 * 800
+        bbox_temp[:, 3] = bbox_tensor[:, 3] / 300 * 800
 
-        # check flag
         assert img.shape == (3, 800, 1088)
-        assert bbox.shape[0] == mask.shape[0]
-        return img, mask, bbox
+        assert bbox_temp.shape[0] == mask.shape[0]
+
+        return img, mask, bbox_temp
 
 
 class BuildDataLoader(torch.utils.data.DataLoader):
