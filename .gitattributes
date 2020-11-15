@@ -2,3 +2,5 @@ data/hw3_mycocodata_bboxes_comp_zlib.npy filter=lfs diff=lfs merge=lfs -text
 data/hw3_mycocodata_img_comp_zlib.h5 filter=lfs diff=lfs merge=lfs -text
 data/hw3_mycocodata_labels_comp_zlib.npy filter=lfs diff=lfs merge=lfs -text
 data/hw3_mycocodata_mask_comp_zlib.h5 filter=lfs diff=lfs merge=lfs -text
+test_modules/supplement_performance/performance_test_set.npz filter=lfs diff=lfs merge=lfs -text
+test_modules/supplement_performance/test_pred_example.npz filter=lfs diff=lfs merge=lfs -text
