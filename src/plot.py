@@ -8,7 +8,6 @@ if not IN_COLAB:
 
 COLAB_ROOT = "/content/drive/My Drive/CIS680_2019/SOLO-FPN"
 
-
 if __name__ == "__main__":
     if not IN_COLAB:
         coloredlogs.install(level='INFO')

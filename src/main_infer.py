@@ -12,7 +12,6 @@ if not IN_COLAB:
 
 COLAB_ROOT = "/content/drive/My Drive/CIS680_2019/SOLO-FPN"
 
-
 if __name__ == '__main__':
     if not IN_COLAB:
         coloredlogs.install(level='INFO')
@@ -50,18 +49,24 @@ if __name__ == '__main__':
     # push the randomized training data into the dataloader
 
     batch_size = 2
-    train_build_loader = BuildDataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    train_build_loader = BuildDataLoader(train_dataset,
+                                         batch_size=batch_size,
+                                         shuffle=True,
+                                         num_workers=0)
     train_loader = train_build_loader.loader()
-    test_build_loader = BuildDataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_build_loader = BuildDataLoader(test_dataset,
+                                        batch_size=batch_size,
+                                        shuffle=False,
+                                        num_workers=0)
     test_loader = test_build_loader.loader()
 
     del train_dataset, test_dataset
 
     # detect device
-    resnet_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    resnet_device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")
+    solo_device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")
     if not IN_COLAB:
         # if not in Google Colab, save GPU memory for SOLO head
         # solo_device = torch.device("cpu")
@@ -95,7 +100,9 @@ if __name__ == '__main__':
     progress_bar = tqdm(enumerate(test_loader, 0))
     for iter, data in progress_bar:
         with torch.no_grad():
-            img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
+            img, label_list, mask_list, bbox_list = [
+                data[i] for i in range(len(data))
+            ]
             img = img.to(resnet_device)
 
             # fpn is a dict
@@ -103,19 +110,19 @@ if __name__ == '__main__':
 
             ori_size = img.size()[-2:]
 
-            if solo_device == torch.device("cpu") and resnet_device == torch.device("cuda:0"):
+            if solo_device == torch.device(
+                    "cpu") and resnet_device == torch.device("cuda:0"):
                 fpn_feat_list = [val.cpu() for val in list(backout.values())]
-            elif solo_device == torch.device("cuda:0") and resnet_device == torch.device("cpu"):
+            elif solo_device == torch.device(
+                    "cuda:0") and resnet_device == torch.device("cpu"):
                 fpn_feat_list = [val.cuda() for val in list(backout.values())]
             else:
                 fpn_feat_list = [val for val in list(backout.values())]
 
             del backout
 
-            cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
-                                                              solo_device,
-                                                              eval=True,
-                                                              ori_size=ori_size)
+            cate_pred_list, ins_pred_list = solo_head.forward(
+                fpn_feat_list, solo_device, eval=True, ori_size=ori_size)
 
             del fpn_feat_list
 
@@ -124,11 +131,12 @@ if __name__ == '__main__':
             label_list = [item.to(solo_device) for item in label_list]
             mask_list = [item.to(solo_device) for item in mask_list]
 
-            ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
-                                                                             bbox_list,
-                                                                             label_list,
-                                                                             mask_list,
-                                                                             device=solo_device)
+            ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(
+                ins_pred_list,
+                bbox_list,
+                label_list,
+                mask_list,
+                device=solo_device)
 
             del bbox_list
 
@@ -137,12 +145,9 @@ if __name__ == '__main__':
             cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                              for fpn_list in cate_gts_list]
 
-            loss, *_ = solo_head.loss(cate_pred_list,
-                                      ins_pred_list,
-                                      ins_gts_list,
-                                      ins_ind_gts_list,
-                                      cate_gts_list,
-                                      solo_device)
+            loss, *_ = solo_head.loss(cate_pred_list, ins_pred_list,
+                                      ins_gts_list, ins_ind_gts_list,
+                                      cate_gts_list, solo_device)
 
             avg_loss += loss.item()
             count += 1
@@ -198,12 +203,13 @@ if __name__ == '__main__':
 
     os.makedirs(mAP_path, exist_ok=True)
     path = os.path.join(mAP_path, 'matches')
-    torch.save({
-        'trues per batch': trues_per_batch,
-        'positives per batch': positives_per_batch,
-        'match_values': match_values,
-        'score_values': score_values
-    }, path)
+    torch.save(
+        {
+            'trues per batch': trues_per_batch,
+            'positives per batch': positives_per_batch,
+            'match_values': match_values,
+            'score_values': score_values
+        }, path)
 
     # calculate mAP
     list_sorted_recall = []
@@ -232,9 +238,10 @@ if __name__ == '__main__':
     print('testing mAP   {}'.format(mAP))
 
     path = os.path.join(mAP_path, 'mAP')
-    torch.save({
-        'sorted_recalls': list_sorted_recall,
-        'sorted_precisions': list_sorted_precision,
-        'AP': list_AP,
-        'mAP': mAP
-    }, path)
+    torch.save(
+        {
+            'sorted_recalls': list_sorted_recall,
+            'sorted_precisions': list_sorted_precision,
+            'AP': list_AP,
+            'mAP': mAP
+        }, path)

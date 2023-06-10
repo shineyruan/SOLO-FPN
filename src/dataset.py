@@ -14,6 +14,7 @@ import cv2
 
 
 class BuildDataset(torch.utils.data.Dataset):
+
     def __init__(self, path):
         # load dataset, make mask list
         dataset_imgs = np.array([])
@@ -51,7 +52,8 @@ class BuildDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         # __getitem__: return torch.tensors
         transed_img, transed_mask, transed_bbox = self.pre_process_batch(
-            self.imgs_data[index], self.masks_data[index], self.bbox_data[index])
+            self.imgs_data[index], self.masks_data[index],
+            self.bbox_data[index])
         label = torch.tensor(self.label_data[index])
         # check flag
         assert transed_img.shape == (3, 800, 1088)
@@ -64,9 +66,9 @@ class BuildDataset(torch.utils.data.Dataset):
     # This function take care of the pre-process of img,mask,bbox
     # in the input mini-batch
     # input:
-        # img: 3*300*400
-        # mask: n_box*300*400
-        # bbox: n_box*4
+    # img: 3*300*400
+    # mask: n_box*300*400
+    # bbox: n_box*4
     def pre_process_batch(self, img, mask, bbox):
         # image preprocess
         img = img.astype(float)
@@ -78,7 +80,9 @@ class BuildDataset(torch.utils.data.Dataset):
         img = img.permute(0, 2, 1)
         img = transforms.functional.normalize(
             # these should be corresponding mean and std of input data
-            img, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            img,
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225])
 
         img = F.pad(img, pad=(11, 11))
 
@@ -103,6 +107,7 @@ class BuildDataset(torch.utils.data.Dataset):
 
 
 class BuildDataLoader(torch.utils.data.DataLoader):
+
     def __init__(self, dataset, batch_size, shuffle, num_workers):
         self.dataset = dataset
         self.batch_size = batch_size
@@ -110,10 +115,10 @@ class BuildDataLoader(torch.utils.data.DataLoader):
         self.num_workers = num_workers
 
     # output:
-        # img: (bz, 3, 800, 1088)
-        # label_list: list, len:bz, each (n_obj,)
-        # transed_mask_list: list, len:bz, each (n_obj, 800,1088)
-        # transed_bbox_list: list, len:bz, each (n_obj, 4)
+    # img: (bz, 3, 800, 1088)
+    # label_list: list, len:bz, each (n_obj,)
+    # transed_mask_list: list, len:bz, each (n_obj, 800,1088)
+    # transed_bbox_list: list, len:bz, each (n_obj, 4)
     def collect_fn(self, batch):
         # collect_fn
         transed_img_list = []
@@ -148,13 +153,15 @@ def visual_bbox_mask(image, masks=None, bboxs=None, labels=None):
         masks: tensor, num_obj * h * w
     """
     outim = np.copy(image.cpu().numpy().transpose(1, 2, 0))
-    outim = (outim * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])) * 255
+    outim = (outim * np.array([0.229, 0.224, 0.225]) +
+             np.array([0.485, 0.456, 0.406])) * 255
     outim = outim.astype(np.uint8)
     if bboxs is not None:
         for i in range(bboxs.shape[0]):
             x1, y1, x2, y2 = bboxs[i][0], bboxs[i][1], bboxs[i][2], bboxs[i][3]
             outim = outim = cv2.cvtColor(outim, cv2.COLOR_RGB2BGR)
-            outim = cv2.rectangle(outim, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 3)
+            outim = cv2.rectangle(outim, (int(x1), int(y1)),
+                                  (int(x2), int(y2)), (0, 0, 255), 3)
 
     if masks is not None:
         for i in range(masks.shape[0]):
@@ -167,13 +174,10 @@ def visual_bbox_mask(image, masks=None, bboxs=None, labels=None):
                     np.clip(outim[:, :, labels[i]] + masks[i].cpu().numpy() * 100, 0, 255)
             outim = outim.astype(np.uint8)
             if labels is not None and bboxs is not None:
-                outim = cv2.putText(outim,
-                                    "Class: {}".format(labels[i]),
+                outim = cv2.putText(outim, "Class: {}".format(labels[i]),
                                     (int(bboxs[i][0]), int(bboxs[i][1])),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    1.0,
-                                    (20, 200, 200),
-                                    2)
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1.0,
+                                    (20, 200, 200), 2)
     return outim
 
 
@@ -202,11 +206,15 @@ if __name__ == '__main__':
     # push the randomized training data into the dataloader
 
     batch_size = 2
-    train_build_loader = BuildDataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    train_build_loader = BuildDataLoader(train_dataset,
+                                         batch_size=batch_size,
+                                         shuffle=True,
+                                         num_workers=0)
     train_loader = train_build_loader.loader()
-    test_build_loader = BuildDataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_build_loader = BuildDataLoader(test_dataset,
+                                        batch_size=batch_size,
+                                        shuffle=False,
+                                        num_workers=0)
     test_loader = test_build_loader.loader()
 
     mask_color_list = ["jet", "ocean", "Spectral", "spring", "cool"]
@@ -227,7 +235,8 @@ if __name__ == '__main__':
         for i in range(batch_size):
             # plot images with annotations
             outim = visual_bbox_mask(img[i], mask[i], bbox[i], label[i])
-            cv2.imwrite("./testfig/visual_trainset_" + str(iter) + ".png", outim)
+            cv2.imwrite("./testfig/visual_trainset_" + str(iter) + ".png",
+                        outim)
             cv2.imshow("visualize dataset", outim)
             cv2.waitKey(0)
             cv2.destroyAllWindows()

@@ -13,7 +13,6 @@ if not IN_COLAB:
 
 COLAB_ROOT = "/content/drive/My Drive/CIS680_2019/SOLO-FPN"
 
-
 if __name__ == '__main__':
     if not IN_COLAB:
         coloredlogs.install(level='DEBUG')
@@ -49,18 +48,24 @@ if __name__ == '__main__':
     # push the randomized training data into the dataloader
 
     batch_size = 2
-    train_build_loader = BuildDataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    train_build_loader = BuildDataLoader(train_dataset,
+                                         batch_size=batch_size,
+                                         shuffle=True,
+                                         num_workers=0)
     train_loader = train_build_loader.loader()
-    test_build_loader = BuildDataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_build_loader = BuildDataLoader(test_dataset,
+                                        batch_size=batch_size,
+                                        shuffle=False,
+                                        num_workers=0)
     test_loader = test_build_loader.loader()
 
     del train_dataset, test_dataset
 
     # detect device
-    resnet_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    solo_device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    resnet_device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")
+    solo_device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")
     if not IN_COLAB:
         # if not in Google Colab, save GPU memory for SOLO head
         solo_device = torch.device("cpu")
@@ -72,10 +77,14 @@ if __name__ == '__main__':
     solo_head = SOLOHead(num_classes=4).to(solo_device).train()
 
     learning_rate = 0.02 / batch_size
-    optimizer = torch.optim.SGD(solo_head.parameters(), lr=learning_rate,
-                                momentum=0.9, weight_decay=1e-4)
+    optimizer = torch.optim.SGD(solo_head.parameters(),
+                                lr=learning_rate,
+                                momentum=0.9,
+                                weight_decay=1e-4)
     # set scheduler
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[27, 33], gamma=0.1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+                                                     milestones=[27, 33],
+                                                     gamma=0.1)
 
     # whether to resume training
     resume = False
@@ -105,7 +114,9 @@ if __name__ == '__main__':
         # loop the image
         progress_bar = tqdm(enumerate(train_loader, 0))
         for iter, data in progress_bar:
-            img, label_list, mask_list, bbox_list = [data[i] for i in range(len(data))]
+            img, label_list, mask_list, bbox_list = [
+                data[i] for i in range(len(data))
+            ]
             img = img.to(resnet_device)
 
             # fpn is a dict
@@ -115,9 +126,11 @@ if __name__ == '__main__':
             ori_size = img.size()[-2:]
             del img
 
-            if solo_device == torch.device("cpu") and resnet_device == torch.device("cuda:0"):
+            if solo_device == torch.device(
+                    "cpu") and resnet_device == torch.device("cuda:0"):
                 fpn_feat_list = [val.cpu() for val in list(backout.values())]
-            elif solo_device == torch.device("cuda:0") and resnet_device == torch.device("cpu"):
+            elif solo_device == torch.device(
+                    "cuda:0") and resnet_device == torch.device("cpu"):
                 fpn_feat_list = [val.cuda() for val in list(backout.values())]
             else:
                 fpn_feat_list = [val for val in list(backout.values())]
@@ -125,10 +138,8 @@ if __name__ == '__main__':
             del backout
 
             optimizer.zero_grad()
-            cate_pred_list, ins_pred_list = solo_head.forward(fpn_feat_list,
-                                                              solo_device,
-                                                              eval=False,
-                                                              ori_size=ori_size)
+            cate_pred_list, ins_pred_list = solo_head.forward(
+                fpn_feat_list, solo_device, eval=False, ori_size=ori_size)
 
             del fpn_feat_list
 
@@ -136,11 +147,12 @@ if __name__ == '__main__':
             bbox_list = [item.to(solo_device) for item in bbox_list]
             label_list = [item.to(solo_device) for item in label_list]
             mask_list = [item.to(solo_device) for item in mask_list]
-            ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(ins_pred_list,
-                                                                             bbox_list,
-                                                                             label_list,
-                                                                             mask_list,
-                                                                             device=solo_device)
+            ins_gts_list, ins_ind_gts_list, cate_gts_list = solo_head.target(
+                ins_pred_list,
+                bbox_list,
+                label_list,
+                mask_list,
+                device=solo_device)
             del label_list, mask_list, bbox_list
 
             ins_ind_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
@@ -148,12 +160,9 @@ if __name__ == '__main__':
             cate_gts_list = [[fpn.to(solo_device) for fpn in fpn_list]
                              for fpn_list in cate_gts_list]
 
-            loss, cate_loss, dice_loss = solo_head.loss(cate_pred_list,
-                                                        ins_pred_list,
-                                                        ins_gts_list,
-                                                        ins_ind_gts_list,
-                                                        cate_gts_list,
-                                                        solo_device)
+            loss, cate_loss, dice_loss = solo_head.loss(
+                cate_pred_list, ins_pred_list, ins_gts_list, ins_ind_gts_list,
+                cate_gts_list, solo_device)
             loss.backward()
             optimizer.step()
 
@@ -171,24 +180,25 @@ if __name__ == '__main__':
         avg_loss /= count
         avg_cate_loss /= count
         avg_dice_loss /= count
-        print("Epoch: {}, loss = {}, cate_loss = {}, avg_dice_loss = {}".format(epochs, avg_loss,
-                                                                                avg_cate_loss,
-                                                                                avg_dice_loss))
+        print(
+            "Epoch: {}, loss = {}, cate_loss = {}, avg_dice_loss = {}".format(
+                epochs, avg_loss, avg_cate_loss, avg_dice_loss))
 
         list_avg_loss.append(avg_loss)
         list_cate_loss.append(avg_cate_loss)
         list_dice_loss.append(avg_dice_loss)
 
         path = os.path.join(checkpoints_path, 'solo_epoch' + str(epochs))
-        torch.save({
-            'epoch': epochs,
-            'model_state_dict': solo_head.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
-            'train_running_loss': avg_loss,
-            'train_cate_loss': avg_cate_loss,
-            'train_dice_loss': avg_dice_loss,
-            'list_loss': list_avg_loss,
-            'list_cate_loss': list_cate_loss,
-            'list_dice_loss': list_dice_loss
-        }, path)
+        torch.save(
+            {
+                'epoch': epochs,
+                'model_state_dict': solo_head.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'train_running_loss': avg_loss,
+                'train_cate_loss': avg_cate_loss,
+                'train_dice_loss': avg_dice_loss,
+                'list_loss': list_avg_loss,
+                'list_cate_loss': list_cate_loss,
+                'list_dice_loss': list_dice_loss
+            }, path)
